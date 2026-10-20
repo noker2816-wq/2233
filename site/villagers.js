@@ -318,6 +318,7 @@ export class Villager {
   randomSpot() {
     const b = this.behavior;
     if (b.kind === 'road') return b.a.clone().lerp(b.b, Math.random());
+    if (b.kind === 'path') { this.pathS = Math.random() * b.path.length; return b.path.at(this.pathS); }
     return inRect(b.area);
   }
 
@@ -338,6 +339,16 @@ export class Villager {
     if (b.kind === 'road') {
       this.target.copy(b.a.clone().lerp(b.b, Math.random() < 0.5 ? rand(0, 0.15) : rand(0.85, 1)));
       this.place = null;
+      return;
+    }
+    if (b.kind === 'path') {
+      // 길을 따라 짧게 끊어 걷는다 (굽은 길도 자연스럽게)
+      const step = rand(4, 12) * (Math.random() < 0.5 ? -1 : 1);
+      this.pathS = THREE.MathUtils.clamp(this.pathS + step, 0, b.path.length);
+      this.target.copy(b.path.at(this.pathS));
+      if (b.jitter) this.target.add(new THREE.Vector3(rand(-b.jitter, b.jitter), 0, rand(-b.jitter, b.jitter)));
+      this.place = b.id || null;
+      this.wait = 0;
       return;
     }
     if (b.kind === 'yard') {
@@ -387,7 +398,7 @@ export class Villager {
       const dist = to.length();
       if (dist < 0.15) {
         this.state = this.willWatch ? 'watch' : 'idle';
-        this.wait = this.willWatch ? rand(4, 9) : rand(1, 4);
+        this.wait = this.willWatch ? rand(4, 9) : this.behavior.kind === 'path' ? rand(0, 1.2) : rand(1, 4);
       } else {
         to.normalize();
         pos.addScaledVector(to, Math.min(dist, this.speed * dt));
@@ -441,4 +452,23 @@ export function makeVillager(behavior, speciesIndex) {
   const v = new Villager({ species: name }, behavior, 7919 * seedCounter++ + 13);
   v.species = name;
   return v;
+}
+
+// 굽은 길을 따라 걷기 위한 폴리라인 (x,z 배열)
+export class PathLine {
+  constructor(pts) {
+    this.pts = pts.map(([x, z]) => new THREE.Vector3(x, 0, z));
+    this.cum = [0];
+    for (let i = 1; i < this.pts.length; i++) this.cum.push(this.cum[i - 1] + this.pts[i].distanceTo(this.pts[i - 1]));
+    this.length = this.cum[this.cum.length - 1];
+  }
+  at(s) {
+    const c = this.cum;
+    if (s <= 0) return this.pts[0].clone();
+    if (s >= this.length) return this.pts[this.pts.length - 1].clone();
+    let i = 1;
+    while (c[i] < s) i++;
+    const t = (s - c[i - 1]) / (c[i] - c[i - 1] || 1);
+    return this.pts[i - 1].clone().lerp(this.pts[i], t);
+  }
 }
