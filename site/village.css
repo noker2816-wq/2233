@@ -47,9 +47,6 @@ body {
   white-space: nowrap;
 }
 
-.hud-credit { right: 12px; bottom: 10px; font-size: 11px; color: #fff; background: rgba(40, 30, 15, .4); padding: 3px 8px; border-radius: 6px; }
-.hud-credit a { color: #fff; }
-
 /* 건물 패널 */
 .panel {
   position: fixed; z-index: 6; right: 16px; top: 120px; bottom: 60px; width: min(420px, calc(100% - 32px));
