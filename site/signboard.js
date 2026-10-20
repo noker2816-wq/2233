@@ -1,256 +1,392 @@
-// 광장 전광판에 그릴 LED 화면 (2048x1024 캔버스 → three.js 텍스처)
+// 중구청 광장 대형 전광판. 노션 대시보드처럼 한 면에 전체 현황을 그린다.
+// 텍스처 3장: 본 화면(데이터 바뀔 때·분 단위), 시계(초 단위), 하단 자막(매 프레임).
 import * as THREE from 'three';
-import { ddayLabel, dateLabel, level, longDate } from './logic.js';
+import { ddayLabel, dateLabel, level, longDate, shortDate, eventsOf } from './logic.js';
 
-const W = 2048;
-const H = 1024;
-const TICKER_Y = 920;
-const ROWS = 6;
-const PAGE_MS = 8000;
-const COLORS = { amber: '#ffb000', red: '#ff3b30', green: '#3dff7a', cyan: '#38e1ff', gray: '#8a8a8a', dim: '#444' };
-const LV_COLOR = { over: COLORS.red, today: COLORS.amber, soon: COLORS.green, later: COLORS.gray };
+export const MAIN_W = 4096;
+export const MAIN_H = 1840;
+const CLOCK_W = 1024;
+const CLOCK_H = 220;
+const TICK_W = 2048;
+const TICK_H = 96;
+const PAGE_MS = 10000;
+
+const C = { amber: '#ffb000', red: '#ff3b30', green: '#3dff7a', cyan: '#38e1ff', gray: '#8f8f8f', dim: '#4a4a4a', text: '#f2efe6', sub: '#cfcac0' };
+const LV = { over: C.red, today: C.amber, soon: C.green, later: C.gray };
 const KR = '"Noto Sans KR", sans-serif';
 const NUM = '"Orbitron", "Noto Sans KR", monospace';
+export const TYPES = [
+  ['수합·제출', '#4c9bd6'], ['지출·회계', '#5fb86b'], ['급여·인사', '#9b6fd1'], ['정보공개', '#e5534b'],
+  ['감사·점검', '#f29b38'], ['행사·차출', '#f06fa4'], ['공람·참고', '#9aa0a8'],
+];
 
 const clockFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
-function dotPattern(ctx) {
+function canvas(w, h) {
   const c = document.createElement('canvas');
-  c.width = c.height = 6;
-  const g = c.getContext('2d');
-  g.fillStyle = 'rgba(0,0,0,0.55)';
-  g.fillRect(0, 0, 6, 6);
-  g.globalCompositeOperation = 'destination-out';
-  g.beginPath();
-  g.arc(3, 3, 2.2, 0, Math.PI * 2);
-  g.fill();
-  return ctx.createPattern(c, 'repeat');
+  c.width = w;
+  c.height = h;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return { c, g: c.getContext('2d'), tex };
 }
 
-function fit(ctx, text, maxW) {
-  if (ctx.measureText(text).width <= maxW) return text;
+function dots(g, size = 6) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const d = c.getContext('2d');
+  d.fillStyle = 'rgba(0,0,0,0.5)';
+  d.fillRect(0, 0, size, size);
+  d.globalCompositeOperation = 'destination-out';
+  d.beginPath();
+  d.arc(size / 2, size / 2, size * 0.37, 0, Math.PI * 2);
+  d.fill();
+  return g.createPattern(c, 'repeat');
+}
+
+function fit(g, text, maxW) {
+  if (maxW <= 0) return '';
+  if (g.measureText(text).width <= maxW) return text;
   let lo = 0;
   let hi = text.length;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (ctx.measureText(`${text.slice(0, mid)}…`).width <= maxW) lo = mid; else hi = mid - 1;
+    if (g.measureText(`${text.slice(0, mid)}…`).width <= maxW) lo = mid; else hi = mid - 1;
   }
   return `${text.slice(0, lo)}…`;
 }
 
-function glowText(ctx, text, x, y, color, blur = 14) {
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = blur;
-  ctx.fillText(text, x, y);
-  ctx.shadowBlur = 0;
+function glow(g, text, x, y, color, blur = 16) {
+  g.fillStyle = color;
+  g.shadowColor = color;
+  g.shadowBlur = blur;
+  g.fillText(text, x, y);
+  g.shadowBlur = 0;
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+function box(g, x, y, w, h, r, fill, stroke) {
+  g.beginPath();
+  g.roundRect(x, y, w, h, r);
+  if (fill) { g.fillStyle = fill; g.fill(); }
+  if (stroke) { g.strokeStyle = stroke; g.lineWidth = 3; g.stroke(); }
+}
+
+function section(g, title, x, y, color, right = '') {
+  g.textBaseline = 'middle';
+  g.textAlign = 'left';
+  g.font = `900 58px ${KR}`;
+  glow(g, title, x, y, color, 10);
+  if (right) {
+    g.font = `700 40px ${NUM}`;
+    g.fillStyle = C.dim;
+    g.textAlign = 'right';
+    g.fillText(right, x + (g.__colW || 0), y);
+  }
 }
 
 export class Signboard {
   constructor() {
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = W;
-    this.canvas.height = H;
-    this.ctx = this.canvas.getContext('2d');
-    this.dots = dotPattern(this.ctx);
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.anisotropy = 8;
+    this.main = canvas(MAIN_W, MAIN_H);
+    this.clock = canvas(CLOCK_W, CLOCK_H);
+    this.tick = canvas(TICK_W, TICK_H);
+    this.mainDots = dots(this.main.g);
+    this.tickDots = dots(this.tick.g, 4);
     this.summary = null;
-    this.syncLabel = '';
+    this.tasks = [];
+    this.sync = '';
     this.page = 0;
     this.pageAt = 0;
-    this.lastSecond = '';
-    this.tickerText = '';
-    this.tickerW = 0;
-    this.tickerX = W;
+    this.lastSec = '';
+    this.tickText = '';
+    this.tickW = 0;
+    this.tickX = TICK_W;
+    this.tickAcc = 0;
   }
 
-  setData(summary, syncLabel) {
+  setData(summary, tasks, sync) {
     this.summary = summary;
-    this.syncLabel = syncLabel;
+    this.tasks = tasks;
+    this.sync = sync;
     this.buildTicker();
-    this.lastSecond = ''; // 다음 프레임에 전체 다시 그림
+    this.drawMain();
+  }
+
+  update(now, dt) {
+    if (!this.summary) return;
+    const sec = clockFmt.format(now);
+    if (sec !== this.lastSec) { this.lastSec = sec; this.drawClock(sec); }
+    if (this.pages > 1 && now.getTime() - this.pageAt > PAGE_MS) {
+      this.pageAt = now.getTime();
+      this.page += 1;
+      this.drawMain();
+    }
+    // 자막은 30fps 정도로만 다시 그린다
+    this.tickX -= dt * 150;
+    if (this.tickX < -this.tickW) this.tickX = TICK_W;
+    this.tickAcc += dt;
+    if (this.tickAcc > 1 / 30) { this.tickAcc = 0; this.drawTicker(); }
   }
 
   buildTicker() {
     const s = this.summary;
     const parts = [];
     if (s.stats.overdue > 0) parts.push(`날짜 지난 업무 ${s.stats.overdue}건 — 실제 처리 여부 확인`);
-    s.events.filter((e) => e.diff >= 0).slice(0, 12).forEach((e) => {
+    s.events.filter((e) => e.diff >= 0).slice(0, 15).forEach((e) => {
       parts.push(`[${e.kind === 'collect' ? '수합' : '제출'}] ${e.task.title} ${dateLabel(e)}${e.time ? ` ${e.time}` : ''} ${ddayLabel(e)}`);
     });
-    s.pending.slice(0, 5).forEach((t) => parts.push(`미제출 · ${t.title}: ${t.pending}`));
+    s.pending.slice(0, 6).forEach((t) => parts.push(`미제출 · ${t.title}: ${t.pending}`));
     if (parts.length === 0) parts.push('남은 기한 업무가 없습니다. 오늘도 수고 많으셨습니다');
-    this.tickerText = parts.join('   ◆   ');
-    this.ctx.font = `900 54px ${KR}`;
-    this.tickerW = this.ctx.measureText(this.tickerText).width;
-    this.tickerX = W;
+    this.tickText = parts.join('    ◆    ');
+    this.tick.g.font = `900 58px ${KR}`;
+    this.tickW = this.tick.g.measureText(this.tickText).width;
+    this.tickX = TICK_W;
   }
 
-  // 매 프레임 호출. 초가 바뀌면 전체, 아니면 자막 띠만 다시 그린다.
-  update(now, dt) {
-    if (!this.summary) return;
-    const sec = clockFmt.format(now);
-    if (now.getTime() - this.pageAt > PAGE_MS) {
-      this.pageAt = now.getTime();
-      this.page += 1;
-      this.lastSecond = '';
-    }
-    if (sec !== this.lastSecond) {
-      this.lastSecond = sec;
-      this.drawAll(now, sec);
-    }
-    this.tickerX -= dt * 260;
-    if (this.tickerX < -this.tickerW) this.tickerX = W - 220;
-    this.drawTicker();
-    this.texture.needsUpdate = true;
-  }
-
-  drawAll(now, sec) {
-    const ctx = this.ctx;
-    const s = this.summary;
-    ctx.fillStyle = '#040404';
-    ctx.fillRect(0, 0, W, H);
-    ctx.textBaseline = 'middle';
-
-    // 머리 줄
-    ctx.font = `900 66px ${KR}`;
-    ctx.textAlign = 'left';
-    glowText(ctx, '경제진흥팀 서무 전광판', 56, 80, COLORS.amber);
-    ctx.font = `700 38px ${KR}`;
-    ctx.fillStyle = COLORS.gray;
-    ctx.fillText(`${longDate(s.today)}  ·  ${this.syncLabel}`, 58, 146);
-    ctx.font = `800 120px ${NUM}`;
-    ctx.textAlign = 'right';
-    glowText(ctx, sec, W - 56, 100, COLORS.green, 18);
-
-    // 숫자 카드
-    const stats = [
-      ['남은 일', s.stats.open, COLORS.amber],
-      ['오늘 기한', s.stats.today, COLORS.red],
-      ['날짜 지남', s.stats.overdue, COLORS.red],
-      ['7일 이내', s.stats.week, COLORS.green],
-      ['7일 해낸 일', s.stats.doneWeek, COLORS.cyan],
-    ];
-    const gap = 22;
-    const bw = (W - 112 - gap * 4) / 5;
-    stats.forEach(([label, n, color], i) => {
-      const x = 56 + i * (bw + gap);
-      ctx.fillStyle = '#0d0d0d';
-      roundRect(ctx, x, 190, bw, 150, 14);
-      ctx.fill();
-      ctx.strokeStyle = '#222';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.textAlign = 'left';
-      ctx.font = `700 38px ${KR}`;
-      ctx.fillStyle = COLORS.gray;
-      ctx.fillText(label, x + 26, 300);
-      ctx.textAlign = 'right';
-      ctx.font = `800 104px ${NUM}`;
-      if (n === 0) { ctx.fillStyle = '#2a2a2a'; ctx.fillText('0', x + bw - 24, 262); } else glowText(ctx, String(n), x + bw - 24, 262, color);
-    });
-
-    // 기한 목록
-    const evs = s.events;
-    const pages = Math.max(1, Math.ceil(evs.length / ROWS));
-    const page = this.page % pages;
-    ctx.textAlign = 'left';
-    ctx.font = `900 44px ${KR}`;
-    glowText(ctx, '기한 현황', 56, 392, COLORS.amber, 10);
-    ctx.textAlign = 'right';
-    ctx.font = `700 34px ${NUM}`;
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(evs.length ? `${page + 1} / ${pages}` : '', W - 56, 392);
-
-    const top = 432;
-    const rh = 78;
-    if (evs.length === 0) {
-      ctx.textAlign = 'left';
-      ctx.font = `700 48px ${KR}`;
-      ctx.fillStyle = COLORS.gray;
-      ctx.fillText('날짜가 잡힌 남은 업무가 없습니다.', 56, top + 120);
-    }
-    evs.slice(page * ROWS, page * ROWS + ROWS).forEach((ev, i) => {
-      const y = top + i * rh;
-      const cy = y + rh / 2;
-      const lv = level(ev);
-      const color = LV_COLOR[lv];
-      // D-day 상자
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 4;
-      roundRect(ctx, 56, y + 8, 250, rh - 16, 10);
-      if (lv === 'over' || lv === 'today') { ctx.fillStyle = lv === 'over' ? 'rgba(255,59,48,.16)' : 'rgba(255,176,0,.16)'; ctx.fill(); }
-      ctx.stroke();
-      ctx.textAlign = 'center';
-      ctx.font = `800 40px ${NUM}`;
-      glowText(ctx, ddayLabel(ev), 181, cy + 2, color, 10);
-      // 수합/제출
-      const isCollect = ev.kind === 'collect';
-      ctx.fillStyle = isCollect ? 'rgba(56,225,255,.14)' : 'rgba(255,176,0,.14)';
-      roundRect(ctx, 330, y + 14, 120, rh - 28, 8);
-      ctx.fill();
-      ctx.font = `900 36px ${KR}`;
-      ctx.fillStyle = isCollect ? COLORS.cyan : COLORS.amber;
-      ctx.fillText(isCollect ? '수합' : '제출', 390, cy + 2);
-      // 중요도 램프
-      const lamp = { 상: COLORS.red, 중: COLORS.amber, 하: '#555' }[ev.task.importance] || '#333';
-      ctx.fillStyle = lamp;
-      ctx.shadowColor = lamp;
-      ctx.shadowBlur = ev.task.importance === '하' ? 0 : 12;
-      ctx.beginPath();
-      ctx.arc(492, cy, 13, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      // 제목
-      ctx.textAlign = 'left';
-      ctx.font = `700 50px ${KR}`;
-      ctx.fillStyle = '#f2efe6';
-      ctx.fillText(fit(ctx, ev.task.title, 1010), 524, cy + 2);
-      // 날짜
-      ctx.textAlign = 'right';
-      ctx.font = `700 42px ${KR}`;
-      ctx.fillStyle = '#d8d4ca';
-      ctx.fillText(`${dateLabel(ev)}${ev.time ? ` ${ev.time}` : ''}`, W - 56, cy + 2);
-      // 구분선
-      ctx.strokeStyle = '#1b1b1b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(56, y + rh);
-      ctx.lineTo(W - 56, y + rh);
-      ctx.stroke();
-    });
-
-    ctx.fillStyle = this.dots;
-    ctx.fillRect(0, 0, W, TICKER_Y);
+  drawClock(sec) {
+    const { g, tex } = this.clock;
+    g.fillStyle = '#040404';
+    g.fillRect(0, 0, CLOCK_W, CLOCK_H);
+    g.textBaseline = 'middle';
+    g.textAlign = 'right';
+    g.font = `800 168px ${NUM}`;
+    glow(g, sec, CLOCK_W - 30, CLOCK_H / 2 + 6, C.green, 22);
+    g.fillStyle = this.mainDots;
+    g.fillRect(0, 0, CLOCK_W, CLOCK_H);
+    tex.needsUpdate = true;
   }
 
   drawTicker() {
-    const ctx = this.ctx;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, TICKER_Y, W, H - TICKER_Y);
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    ctx.font = `900 54px ${KR}`;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(220, TICKER_Y, W - 220, H - TICKER_Y);
-    ctx.clip();
-    glowText(ctx, this.tickerText, this.tickerX, TICKER_Y + 52, COLORS.amber, 10);
-    ctx.restore();
-    ctx.fillStyle = COLORS.red;
-    ctx.fillRect(0, TICKER_Y + 6, 200, H - TICKER_Y - 12);
-    ctx.fillStyle = '#000';
-    ctx.font = `800 48px ${NUM}`;
-    ctx.textAlign = 'center';
-    ctx.fillText('NEXT', 100, TICKER_Y + 54);
-    ctx.fillStyle = this.dots;
-    ctx.fillRect(0, TICKER_Y, W, H - TICKER_Y);
+    const { g, tex } = this.tick;
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, TICK_W, TICK_H);
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    g.font = `900 58px ${KR}`;
+    g.save();
+    g.beginPath();
+    g.rect(170, 0, TICK_W - 170, TICK_H);
+    g.clip();
+    glow(g, this.tickText, this.tickX, TICK_H / 2 + 3, C.amber, 8);
+    g.restore();
+    g.fillStyle = C.red;
+    g.fillRect(0, 6, 150, TICK_H - 12);
+    g.fillStyle = '#000';
+    g.font = `800 40px ${NUM}`;
+    g.textAlign = 'center';
+    g.fillText('NEXT', 75, TICK_H / 2 + 3);
+    g.fillStyle = this.tickDots;
+    g.fillRect(0, 0, TICK_W, TICK_H);
+    tex.needsUpdate = true;
+  }
+
+  drawMain() {
+    const { g, tex } = this.main;
+    const s = this.summary;
+    g.fillStyle = '#040404';
+    g.fillRect(0, 0, MAIN_W, MAIN_H);
+    g.textBaseline = 'middle';
+
+    // 머리 줄 (오른쪽 위 시계 자리는 비워둠)
+    g.textAlign = 'left';
+    g.font = `900 110px ${KR}`;
+    glow(g, '경제진흥팀 서무 전광판', 70, 92, C.amber, 18);
+    g.font = `700 50px ${KR}`;
+    g.fillStyle = C.gray;
+    g.fillText(`${longDate(s.today)}   ·   ${this.sync}`, 74, 186);
+
+    // 숫자 카드 6개
+    const stats = [
+      ['남은 일', s.stats.open, C.amber], ['오늘 기한', s.stats.today, C.red], ['날짜 지남', s.stats.overdue, C.red],
+      ['7일 이내', s.stats.week, C.green], ['날짜 미정', s.undated.length, C.cyan], ['7일 해낸 일', s.stats.doneWeek, C.cyan],
+    ];
+    const gap = 30;
+    const cw = (MAIN_W - 140 - gap * 5) / 6;
+    stats.forEach(([label, n, color], i) => {
+      const x = 70 + i * (cw + gap);
+      box(g, x, 240, cw, 210, 18, '#0d0d0d', '#232323');
+      g.textAlign = 'left';
+      g.font = `700 50px ${KR}`;
+      g.fillStyle = C.gray;
+      g.fillText(label, x + 36, 395);
+      g.textAlign = 'right';
+      g.font = `800 150px ${NUM}`;
+      if (n === 0) { g.fillStyle = '#262626'; g.fillText('0', x + cw - 34, 335); } else glow(g, String(n), x + cw - 34, 335, color, 18);
+    });
+
+    this.drawDeadlines(g, 70, 1630);
+    this.drawToday(g, 1760, 1130);
+    this.drawRight(g, 2950, 1076);
+
+    g.fillStyle = this.mainDots;
+    g.fillRect(0, 0, MAIN_W, MAIN_H);
+    tex.needsUpdate = true;
+  }
+
+  // 왼쪽: 기한 현황 전체 목록 (넘치면 페이지)
+  drawDeadlines(g, x0, w) {
+    const evs = this.summary.events;
+    const rowH = 92;
+    const top = 590;
+    const rows = Math.floor((MAIN_H - 30 - top) / rowH);
+    this.pages = Math.max(1, Math.ceil(evs.length / rows));
+    const page = this.page % this.pages;
+    g.__colW = w;
+    section(g, '기한 현황', x0, 530, C.amber, evs.length ? `${evs.length}건${this.pages > 1 ? `  ${page + 1}/${this.pages}` : ''}` : '');
+    g.__colW = 0;
+    if (!evs.length) {
+      g.font = `700 54px ${KR}`;
+      g.fillStyle = C.gray;
+      g.textAlign = 'left';
+      g.fillText('날짜가 잡힌 남은 업무가 없습니다.', x0, top + 80);
+      return;
+    }
+    evs.slice(page * rows, page * rows + rows).forEach((ev, i) => {
+      const y = top + i * rowH;
+      const cy = y + rowH / 2;
+      const color = LV[level(ev)];
+      const lv = level(ev);
+      box(g, x0, y + 10, 230, rowH - 20, 12, lv === 'over' ? 'rgba(255,59,48,.16)' : lv === 'today' ? 'rgba(255,176,0,.16)' : null, color);
+      g.textAlign = 'center';
+      g.font = `800 44px ${NUM}`;
+      glow(g, ddayLabel(ev), x0 + 115, cy + 2, color, 10);
+      const col = ev.kind === 'collect';
+      box(g, x0 + 250, y + 18, 110, rowH - 36, 8, col ? 'rgba(56,225,255,.14)' : 'rgba(255,176,0,.14)');
+      g.font = `900 40px ${KR}`;
+      g.fillStyle = col ? C.cyan : C.amber;
+      g.fillText(col ? '수합' : '제출', x0 + 305, cy + 2);
+      const lamp = { 상: C.red, 중: C.amber, 하: '#555' }[ev.task.importance] || '#333';
+      g.fillStyle = lamp;
+      g.shadowColor = lamp;
+      g.shadowBlur = ev.task.importance === '하' ? 0 : 12;
+      g.beginPath();
+      g.arc(x0 + 395, cy, 14, 0, Math.PI * 2);
+      g.fill();
+      g.shadowBlur = 0;
+      g.font = `700 48px ${KR}`;
+      const date = `${dateLabel(ev)}${ev.time ? ` ${ev.time}` : ''}`;
+      const dw = g.measureText(date).width;
+      g.textAlign = 'right';
+      g.fillStyle = C.sub;
+      g.fillText(date, x0 + w, cy + 2);
+      g.textAlign = 'left';
+      g.font = `700 54px ${KR}`;
+      g.fillStyle = C.text;
+      g.fillText(fit(g, ev.task.title, w - 430 - dw - 40), x0 + 425, cy + 2);
+      g.strokeStyle = '#1a1a1a';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(x0, y + rowH);
+      g.lineTo(x0 + w, y + rowH);
+      g.stroke();
+    });
+  }
+
+  list(g, items, x0, y0, w, rowH, max, empty) {
+    if (!items.length) {
+      g.font = `700 46px ${KR}`;
+      g.fillStyle = C.dim;
+      g.textAlign = 'left';
+      g.fillText(empty, x0, y0 + rowH / 2);
+      return;
+    }
+    const shown = items.length > max ? items.slice(0, max - 1) : items;
+    shown.forEach((it, i) => {
+      const cy = y0 + i * rowH + rowH / 2;
+      let x = x0;
+      if (it.tag) {
+        g.font = `900 36px ${KR}`;
+        const tw = g.measureText(it.tag).width + 28;
+        box(g, x, cy - 26, tw, 52, 8, it.tagColor);
+        g.fillStyle = '#000';
+        g.textAlign = 'center';
+        g.fillText(it.tag, x + tw / 2, cy + 2);
+        x += tw + 18;
+      }
+      g.font = `700 44px ${KR}`;
+      let sw = 0;
+      if (it.sub) {
+        sw = g.measureText(it.sub).width;
+        g.textAlign = 'right';
+        g.fillStyle = it.subColor || C.gray;
+        g.fillText(it.sub, x0 + w, cy + 2);
+      }
+      g.textAlign = 'left';
+      g.font = `700 48px ${KR}`;
+      g.fillStyle = C.text;
+      g.fillText(fit(g, it.text, x0 + w - x - sw - 30), x, cy + 2);
+    });
+    if (items.length > max) {
+      g.font = `700 42px ${KR}`;
+      g.fillStyle = C.gray;
+      g.textAlign = 'left';
+      g.fillText(`외 ${items.length - max + 1}건`, x0, y0 + (max - 1) * rowH + rowH / 2);
+    }
+  }
+
+  // 가운데: 오늘 / 날짜 지남
+  drawToday(g, x0, w) {
+    const s = this.summary;
+    g.__colW = w;
+    section(g, '오늘', x0, 530, C.red, `${s.todayEv.length}건`);
+    const today = s.todayEv.map((e) => ({
+      tag: e.kind === 'collect' ? '수합' : '제출',
+      tagColor: e.kind === 'collect' ? C.cyan : C.amber,
+      text: e.task.title,
+      sub: e.timePassed ? `${e.time} 경과` : e.inRange && e.diff > 0 ? `~${shortDate(e.endDay)}` : e.time || '',
+      subColor: e.timePassed ? C.red : C.gray,
+    }));
+    this.list(g, today, x0, 580, w, 86, 6, '오늘 기한 업무 없음');
+
+    section(g, '날짜 지남 · 처리 확인', x0, 1150, C.red, `${s.overdue.length}건`);
+    g.__colW = 0;
+    const over = s.overdue.map((e) => ({
+      tag: e.kind === 'collect' ? '수합' : '제출',
+      tagColor: '#ff6b61',
+      text: e.task.title,
+      sub: `${shortDate(e.keyDay)} · ${ddayLabel(e)}`,
+      subColor: C.red,
+    }));
+    this.list(g, over, x0, 1200, w, 86, 7, '날짜 지난 업무 없음');
+  }
+
+  // 오른쪽: 유형별 / 날짜 미정 / 최근 해낸 일
+  drawRight(g, x0, w) {
+    const s = this.summary;
+    const open = this.tasks.filter((t) => !t.done);
+    section(g, '업무유형별', x0, 530, C.cyan);
+    const counts = TYPES.map(([type, color]) => {
+      const ts = open.filter((t) => t.type === type);
+      const over = ts.filter((t) => eventsOf(t).some((e) => e.diff < 0)).length;
+      return { type, color, n: ts.length, over };
+    });
+    const max = Math.max(1, ...counts.map((c) => c.n));
+    counts.forEach((c, i) => {
+      const cy = 600 + i * 78;
+      g.textAlign = 'left';
+      g.font = `700 40px ${KR}`;
+      g.fillStyle = C.sub;
+      g.fillText(c.type, x0, cy);
+      const bx = x0 + 230;
+      const bw = w - 230 - 250;
+      box(g, bx, cy - 20, bw, 40, 8, '#141414');
+      if (c.n) box(g, bx, cy - 20, Math.max(16, (bw * c.n) / max), 40, 8, c.color);
+      g.textAlign = 'right';
+      g.font = `800 44px ${NUM}`;
+      g.fillStyle = c.n ? C.text : C.dim;
+      g.fillText(String(c.n), x0 + w - 130, cy + 2);
+      if (c.over) {
+        g.font = `900 30px ${KR}`;
+        g.fillStyle = C.red;
+        g.fillText(`지남 ${c.over}`, x0 + w, cy + 2);
+      }
+    });
+
+    g.__colW = w;
+    section(g, '날짜 미정', x0, 1200, C.cyan, `${s.undated.length}건`);
+    this.list(g, s.undated.map((t) => ({ text: t.title })), x0, 1240, w, 70, 4, '없음');
+    section(g, '최근 7일 해낸 일', x0, 1560, C.green, `오늘 ${s.stats.doneToday}`);
+    g.__colW = 0;
+    this.list(g, s.doneRecent.map(({ task, day }) => ({ text: task.title, sub: day === s.today ? '오늘' : shortDate(day) })), x0, 1600, w, 70, 3, '최근 완료 기록 없음');
   }
 }
