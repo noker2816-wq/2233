@@ -1,6 +1,7 @@
 // 마을 주민: 기본 도형으로 만든 2등신 동물 캐릭터 16종 + 소품(안경·공무원증·모자·가방·치마 등).
 // 행동: 광장(plaza) / 동네 앞마당(yard) / 길(road) 세 가지.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 let gradient;
 function toonGradient() {
@@ -17,6 +18,41 @@ export function toon(color) {
   return matCache.get(color);
 }
 export const toonGradientMap = () => toonGradient();
+
+// 여러 메시를 정점색 메시 하나로 합친다 (그리기 호출 수 줄이기). 그룹의 변환은 그대로 유지.
+let vcMat;
+export function vertexColorMat() {
+  if (!vcMat) vcMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
+  return vcMat;
+}
+export function bakeGroup(group, { cast = true } = {}) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const geos = [];
+  const meshes = [];
+  group.traverse((o) => { if (o.isMesh && !o.userData.keep) meshes.push(o); });
+  meshes.forEach((o) => {
+    let g = o.geometry.clone();
+    if (!g.index) g = g.toNonIndexed();
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    Object.keys(g.attributes).forEach((k) => { if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); });
+    const c = o.material.color || new THREE.Color(0xffffff);
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geos.push(g);
+    o.parent.remove(o);
+  });
+  // 비어 있는 하위 그룹 정리
+  [...group.children].forEach((ch) => { if (!ch.isMesh && ch.children.length === 0) group.remove(ch); });
+  if (!geos.length) return null;
+  const merged = new THREE.Mesh(mergeGeometries(geos, false), vertexColorMat());
+  merged.castShadow = cast;
+  group.add(merged);
+  geos.forEach((g) => g.dispose());
+  return merged;
+}
 
 // 자주 쓰는 도형은 공유
 const G = {
@@ -200,12 +236,15 @@ function buildBody(spec, rnd) {
   }
   root.add(head);
 
-  if (sp.tail === 'thin') root.add(part(G.cyl, fur, [0, 0.5, -0.36], [0.05, 0.4, 0.05], [-0.9, 0, 0]));
-  if (sp.tail === 'puff') root.add(part(G.sphLo, fur, [0, 0.45, -0.34], [0.12, 0.12, 0.12]));
+  const extras = new THREE.Group();
+  if (sp.tail === 'thin') extras.add(part(G.cyl, fur, [0, 0.5, -0.36], [0.05, 0.4, 0.05], [-0.9, 0, 0]));
+  if (sp.tail === 'puff') extras.add(part(G.sphLo, fur, [0, 0.45, -0.34], [0.12, 0.12, 0.12]));
   if (sp.tail === 'fox') {
-    root.add(part(G.sph, fur, [0, 0.5, -0.45], [0.16, 0.16, 0.34], [0.6, 0, 0]));
-    root.add(part(G.sphLo, toon(0xffffff), [0, 0.68, -0.68], [0.1, 0.1, 0.1]));
+    extras.add(part(G.sph, fur, [0, 0.5, -0.45], [0.16, 0.16, 0.34], [0.6, 0, 0]));
+    extras.add(part(G.sphLo, toon(0xffffff), [0, 0.68, -0.68], [0.1, 0.1, 0.1]));
   }
+  if (extras.children.length) root.add(extras);
+  [...legs, ...arms, torso, head, extras].forEach((grp) => { if (grp.children.length) bakeGroup(grp); });
 
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false }));
   blob.rotation.x = -Math.PI / 2;

@@ -57,6 +57,17 @@ function fit(g, text, maxW) {
   return `${text.slice(0, lo)}…`;
 }
 
+// 글자 크기를 줄여가며 맞추고, 최소 크기에서도 넘치면 말줄임
+function fitShrink(g, text, maxW, size, minSize, weight = 700) {
+  let fs = size;
+  g.font = `${weight} ${fs}px ${KR}`;
+  while (fs > minSize && g.measureText(text).width > maxW) {
+    fs -= 2;
+    g.font = `${weight} ${fs}px ${KR}`;
+  }
+  return fit(g, text, maxW);
+}
+
 function glow(g, text, x, y, color, blur = 16) {
   g.fillStyle = color;
   g.shadowColor = color;
@@ -214,9 +225,9 @@ export class Signboard {
       if (n === 0) { g.fillStyle = '#262626'; g.fillText('0', x + cw - 34, 335); } else glow(g, String(n), x + cw - 34, 335, color, 18);
     });
 
-    this.drawDeadlines(g, 70, 1630);
-    this.drawToday(g, 1760, 1130);
-    this.drawRight(g, 2950, 1076);
+    this.drawDeadlines(g, 70, 1990);
+    this.drawToday(g, 2120, 960);
+    this.drawRight(g, 3140, 886);
 
     g.fillStyle = this.mainDots;
     g.fillRect(0, 0, MAIN_W, MAIN_H);
@@ -263,16 +274,15 @@ export class Signboard {
       g.arc(x0 + 395, cy, 14, 0, Math.PI * 2);
       g.fill();
       g.shadowBlur = 0;
-      g.font = `700 48px ${KR}`;
+      g.font = `700 44px ${KR}`;
       const date = `${dateLabel(ev)}${ev.time ? ` ${ev.time}` : ''}`;
       const dw = g.measureText(date).width;
       g.textAlign = 'right';
       g.fillStyle = C.sub;
       g.fillText(date, x0 + w, cy + 2);
       g.textAlign = 'left';
-      g.font = `700 54px ${KR}`;
       g.fillStyle = C.text;
-      g.fillText(fit(g, ev.task.title, w - 430 - dw - 40), x0 + 425, cy + 2);
+      g.fillText(fitShrink(g, ev.task.title, w - 425 - dw - 36, 54, 38), x0 + 425, cy + 2);
       g.strokeStyle = '#1a1a1a';
       g.lineWidth = 2;
       g.beginPath();
@@ -303,7 +313,7 @@ export class Signboard {
         g.fillText(it.tag, x + tw / 2, cy + 2);
         x += tw + 18;
       }
-      g.font = `700 44px ${KR}`;
+      g.font = `700 40px ${KR}`;
       let sw = 0;
       if (it.sub) {
         sw = g.measureText(it.sub).width;
@@ -312,9 +322,8 @@ export class Signboard {
         g.fillText(it.sub, x0 + w, cy + 2);
       }
       g.textAlign = 'left';
-      g.font = `700 48px ${KR}`;
       g.fillStyle = C.text;
-      g.fillText(fit(g, it.text, x0 + w - x - sw - 30), x, cy + 2);
+      g.fillText(fitShrink(g, it.text, x0 + w - x - sw - 26, 46, 34), x, cy + 2);
     });
     if (items.length > max) {
       g.font = `700 42px ${KR}`;
@@ -344,7 +353,7 @@ export class Signboard {
       tag: e.kind === 'collect' ? '수합' : '제출',
       tagColor: '#ff6b61',
       text: e.task.title,
-      sub: `${shortDate(e.keyDay)} · ${ddayLabel(e)}`,
+      sub: ddayLabel(e),
       subColor: C.red,
     }));
     this.list(g, over, x0, 1200, w, 86, 7, '날짜 지난 업무 없음');
@@ -364,11 +373,11 @@ export class Signboard {
     counts.forEach((c, i) => {
       const cy = 600 + i * 78;
       g.textAlign = 'left';
-      g.font = `700 40px ${KR}`;
+      g.font = `700 38px ${KR}`;
       g.fillStyle = C.sub;
       g.fillText(c.type, x0, cy);
-      const bx = x0 + 230;
-      const bw = w - 230 - 250;
+      const bx = x0 + 200;
+      const bw = w - 200 - 240;
       box(g, bx, cy - 20, bw, 40, 8, '#141414');
       if (c.n) box(g, bx, cy - 20, Math.max(16, (bw * c.n) / max), 40, 8, c.color);
       g.textAlign = 'right';

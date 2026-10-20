@@ -7,6 +7,7 @@ import { store, fetchEnvelope, PW_KEY, makeDemo } from './shared.js';
 import { summarize, eventsOf, ddayLabel, dateLabel, level, kstToday, kstDay, kstTime, longDate, shortDate } from './logic.js';
 import { Signboard, MAIN_W, MAIN_H } from './signboard.js';
 import { makeVillager, toon, toonGradientMap, SPECIES_NAMES } from './villagers.js';
+import { Traffic, Monorail } from './traffic.js';
 
 const REFRESH_MS = 3 * 60 * 1000;
 const STALE_MIN = 40;
@@ -25,7 +26,7 @@ const geo = (lat, lng) => ({ x: (lng - ORIGIN.lng) * 9025, z: -(lat - ORIGIN.lat
 
 const DONGS = [
   { name: '동인동', lat: 35.8714, lng: 128.6115 },
-  { name: '삼덕동', lat: 35.8658, lng: 128.6062, dx: 9, dz: 5 },
+  { name: '삼덕동', lat: 35.8658, lng: 128.6062, dx: 33, dz: 5 },
   { name: '성내1동', lat: 35.8650, lng: 128.5985 },
   { name: '성내2동', lat: 35.8700, lng: 128.5935, dx: -4 },
   { name: '성내3동', lat: 35.8745, lng: 128.5860 },
@@ -39,15 +40,17 @@ const DONGS = [
 ].map((d) => { const p = geo(d.lat, d.lng); return { ...d, x: p.x + (d.dx || 0), z: p.z + (d.dz || 0) }; });
 
 const ROADS = [
-  { name: '공평로', x: -2, z0: -95, z1: 180, w: 8 },
-  { name: '중앙대로', x: -104, z0: -95, z1: 180, w: 10 },
-  { name: '달구벌대로', z: 59, x0: -255, x1: 95, w: 11 },
-  { name: '국채보상로', z: -46, x0: -255, x1: 95, w: 10 },
+  { name: '공평로', x: 22, z0: -95, z1: 180, w: 10 },
+  { name: '중앙대로', x: -104, z0: -95, z1: 180, w: 12 },
+  { name: '달구벌대로', z: 59, x0: -255, x1: 95, w: 12 },
+  { name: '국채보상로', z: -50, x0: -255, x1: 95, w: 11 },
 ];
 const RIVER = { x: 78, w: 16, z0: -110, z1: 190 };
-const PLAZA = { x0: -58, x1: -8, z0: -22, z1: 22 };
-const BOARD_X = -33;
-const HALL = { x: 22, z: 0 };
+// 중구청은 남향, 그 앞 광장 한가운데 전광판(역시 남향), 광장 좌우로 업무유형 상점
+const PLAZA = { x0: -52, x1: 4, z0: -12, z1: 26 };
+const BOARD_X = -24;
+const BOARD_Z = 8;
+const HALL = { x: -24, z: -30 };
 
 /* ====================== 렌더러·카메라 ====================== */
 let renderer;
@@ -69,9 +72,9 @@ scene.fog = new THREE.Fog(0x9fd8ff, 260, 760);
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 1500);
 const VIEWS = {
   overview: { pos: V(-60, 200, 290), target: V(-80, 0, 30) },
-  plaza: { pos: V(-4, 17, 24), target: V(-36, 6, -2) },
-  board: { pos: V(BOARD_X, 11, 31), target: V(BOARD_X, 11, 0) },
-  hall: { pos: V(-12, 22, 42), target: V(HALL.x, 8, 0) },
+  plaza: { pos: V(-24, 22, 60), target: V(-24, 6, 4) },
+  board: { pos: V(BOARD_X, 11, BOARD_Z + 31), target: V(BOARD_X, 11, BOARD_Z) },
+  hall: { pos: V(14, 24, -2), target: V(HALL.x, 10, HALL.z) },
 };
 camera.position.copy(VIEWS.overview.pos);
 
@@ -220,28 +223,33 @@ function roadName(text, x, z, rotY = 0) {
   p.position.set(x, 0.08, z);
   scene.add(p);
 }
-roadName('공평로', -2, 95, Math.PI / 2);
+roadName('공평로', 22, 95, Math.PI / 2);
 roadName('중앙대로', -104, 20, Math.PI / 2);
 roadName('중앙대로', -104, 130, Math.PI / 2);
 roadName('달구벌대로', -40, 59);
 roadName('달구벌대로', -190, 59);
-roadName('국채보상로', -60, -46);
-roadName('국채보상로', -190, -46);
+roadName('국채보상로', -60, -50);
+roadName('국채보상로', -190, -50);
 
 // 신천
 flat(RIVER.w + 14, RIVER.z1 - RIVER.z0, 0x7fbf6a, RIVER.x, (RIVER.z0 + RIVER.z1) / 2, 0.03);
 const water = flat(RIVER.w, RIVER.z1 - RIVER.z0, 0x6cb8e0, RIVER.x, (RIVER.z0 + RIVER.z1) / 2, 0.05);
-[59, -46].forEach((z) => {
+[59, -50].forEach((z) => {
   mesh(new THREE.BoxGeometry(RIVER.w + 16, 0.6, 12), toon(0xb9b2a4), RIVER.x, 0.4, z, { receive: true });
   [-1, 1].forEach((s) => mesh(new THREE.BoxGeometry(RIVER.w + 16, 1, 0.4), toon(0xe8e2d6), RIVER.x, 1.1, z + s * 5.8));
 });
 labelSprite('신천', RIVER.x, 6, 10, 18, { color: '#1d5f8a', bg: 'rgba(255,255,255,.85)', size: 0.55 });
 
 /* ====================== 광장 + 대형 전광판 ====================== */
-flat(PLAZA.x1 - PLAZA.x0 + 4, PLAZA.z1 - PLAZA.z0 + 22, 0xd8c08f, (PLAZA.x0 + PLAZA.x1) / 2, 0, 0.03);
-flat(PLAZA.x1 - PLAZA.x0, PLAZA.z1 - PLAZA.z0 + 18, 0xeedcb3, (PLAZA.x0 + PLAZA.x1) / 2, 0, 0.035);
-for (let x = PLAZA.x0 + 5; x < PLAZA.x1; x += 5) flat(0.15, PLAZA.z1 - PLAZA.z0 + 18, 0xe0caa0, x, 0, 0.038);
-flat(16, 46, 0xeedcb3, 5, 0, 0.033); // 중구청 앞마당
+{
+  const cx = (PLAZA.x0 + PLAZA.x1) / 2;
+  const w = PLAZA.x1 - PLAZA.x0 + 26;
+  const z0 = HALL.z + 12;
+  const d = PLAZA.z1 + 4 - z0;
+  flat(w + 4, d + 4, 0xd8c08f, cx, z0 + d / 2, 0.03);
+  flat(w, d, 0xeedcb3, cx, z0 + d / 2, 0.035);
+  for (let x = cx - w / 2 + 5; x < cx + w / 2; x += 5) flat(0.15, d, 0xe0caa0, x, z0 + d / 2, 0.038);
+}
 
 const sign = new Signboard();
 const SCREEN_W = 28;
@@ -249,7 +257,7 @@ const MAIN_PH = SCREEN_W * (MAIN_H / MAIN_W);
 const TICK_PH = SCREEN_W * (96 / 2048);
 const SCREEN_BOTTOM = 4.2;
 const boardGroup = add(new THREE.Group());
-boardGroup.position.set(BOARD_X, 0, 0);
+boardGroup.position.set(BOARD_X, 0, BOARD_Z);
 const frameH = MAIN_PH + TICK_PH + 1.4;
 const frameY = SCREEN_BOTTOM - 0.6 + frameH / 2;
 const PILLAR_DX = SCREEN_W / 2 + 1.4;
@@ -292,15 +300,17 @@ boardGroup.add(screenGlow);
 [boardFrame, ...screens].forEach((m) => { m.userData.pick = { kind: 'board' }; pickables.push(m); });
 
 /* ====================== 업무유형별 상점 (광장 양옆) ====================== */
+const SHOP_W_X = PLAZA.x0 - 9; // 서쪽 줄 (동쪽을 봄)
+const SHOP_E_X = PLAZA.x1 + 7; // 동쪽 줄 (서쪽을 봄)
 const SHOPS = [
-  { type: '수합·제출', name: '수합 우체국', wall: 0xfbe3c0, roof: 0x4c9bd6, x: -52, side: 'n' },
-  { type: '지출·회계', name: '회계 은행', wall: 0xe6f0d6, roof: 0x5fb86b, x: -40, side: 'n' },
-  { type: '급여·인사', name: '인사 관청', wall: 0xece3f6, roof: 0x9b6fd1, x: -28, side: 'n' },
-  { type: '정보공개', name: '정보공개 도서관', wall: 0xf8e1dc, roof: 0xe5534b, x: -16, side: 'n' },
-  { type: '감사·점검', name: '감사 사무소', wall: 0xfbe9cf, roof: 0xf29b38, x: -47, side: 's' },
-  { type: '행사·차출', name: '행사 공연장', wall: 0xfde3ee, roof: 0xf06fa4, x: -33, side: 's' },
-  { type: '공람·참고', name: '공람 게시판', wall: 0xeeeeea, roof: 0x8a8f99, x: -19, side: 's' },
-];
+  { type: '수합·제출', name: '수합 우체국', wall: 0xfbe3c0, roof: 0x4c9bd6, z: -7, side: 'e' },
+  { type: '지출·회계', name: '회계 은행', wall: 0xe6f0d6, roof: 0x5fb86b, z: 3, side: 'e' },
+  { type: '급여·인사', name: '인사 관청', wall: 0xece3f6, roof: 0x9b6fd1, z: 13, side: 'e' },
+  { type: '정보공개', name: '정보공개 도서관', wall: 0xf8e1dc, roof: 0xe5534b, z: 23, side: 'e' },
+  { type: '감사·점검', name: '감사 사무소', wall: 0xfbe9cf, roof: 0xf29b38, z: -2, side: 'w' },
+  { type: '행사·차출', name: '행사 공연장', wall: 0xfde3ee, roof: 0xf06fa4, z: 10, side: 'w' },
+  { type: '공람·참고', name: '공람 게시판', wall: 0xeeeeea, roof: 0x8a8f99, z: 22, side: 'w' },
+].map((b) => ({ ...b, x: b.side === 'w' ? SHOP_W_X : SHOP_E_X }));
 function badgeTexture(n, color) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -324,10 +334,9 @@ function badgeTexture(n, color) {
 const shopDoors = [];
 const shopObjs = SHOPS.map((b) => {
   const g = add(new THREE.Group());
-  const z = b.side === 'n' ? PLAZA.z0 - 9 : PLAZA.z1 + 9;
-  g.position.set(b.x, 0, z);
-  g.rotation.y = b.side === 'n' ? 0 : Math.PI;
-  const w = 9.6;
+  g.position.set(b.x, 0, b.z);
+  g.rotation.y = b.side === 'w' ? Math.PI / 2 : -Math.PI / 2;
+  const w = 8.8;
   const h = 5;
   const d = 8;
   mesh(new THREE.BoxGeometry(w + 0.4, 0.4, d + 0.4), toon(0xb9a484), 0, 0.2, 0, { parent: g, receive: true });
@@ -351,15 +360,15 @@ const shopObjs = SHOPS.map((b) => {
   badge.position.set(0, h + 4.4, 0);
   g.add(badge);
   g.traverse((o) => { if (o.isMesh) { o.userData.pick = { kind: 'shop', shop: b }; pickables.push(o); } });
-  const doorZ = b.side === 'n' ? z + d / 2 + 1.6 : z - d / 2 - 1.6;
-  shopDoors.push({ pos: V(b.x, 0, doorZ), id: `shop:${b.type}` });
+  const doorX = b.side === 'w' ? b.x + d / 2 + 1.6 : b.x - d / 2 - 1.6;
+  shopDoors.push({ pos: V(doorX, 0, b.z), id: `shop:${b.type}` });
   return { def: b, badge, lastBadge: '' };
 });
 
 /* ====================== 중구청 ====================== */
 const hall = add(new THREE.Group());
 hall.position.set(HALL.x, 0, HALL.z);
-hall.rotation.y = -Math.PI / 2; // 정면이 서쪽(광장·공평로)을 본다
+hall.rotation.y = 0; // 남향: 정면이 광장과 전광판을 본다
 {
   const wall = '#efe6d6';
   mesh(new THREE.BoxGeometry(40, 0.8, 22), toon(0xc9bda6), 0, 0.4, 0, { parent: hall, receive: true });
@@ -390,7 +399,7 @@ hall.rotation.y = -Math.PI / 2; // 정면이 서쪽(광장·공평로)을 본다
   hall.traverse((o) => { if (o.isMesh) { o.userData.pick = { kind: 'hall' }; pickables.push(o); } });
 }
 labelSprite('대구 중구청', HALL.x, 33, HALL.z, 22, { bg: '#2c5aa0', color: '#fff', size: 0.5 });
-const hallDoor = { pos: V(HALL.x - 16, 0, 0), id: 'hall' };
+const hallDoor = { pos: V(HALL.x, 0, HALL.z + 16), id: 'hall' };
 
 /* ====================== 행정복지센터 12곳 ====================== */
 const dongObjs = DONGS.map((d, i) => {
@@ -475,7 +484,7 @@ labelSprite('반월당', -104, 7, 59, 12, { bg: 'rgba(44,90,160,.92)', color: '#
 
 /* ====================== 나무·꽃·가로등 (인스턴스) ====================== */
 const blockedRects = [
-  { x0: PLAZA.x0 - 6, x1: HALL.x + 16, z0: PLAZA.z0 - 16, z1: PLAZA.z1 + 16 },
+  { x0: SHOP_W_X - 8, x1: SHOP_E_X + 8, z0: HALL.z - 14, z1: PLAZA.z1 + 6 },
   { x0: -235, x1: -205, z0: -28, z1: 2 },
   { x0: DONGSEONG.x - 12, x1: DONGSEONG.x + 12, z0: DONGSEONG.z0 - 4, z1: DONGSEONG.z1 + 6 },
   ...DONGS.map((d) => ({ x0: d.x - 12, x1: d.x + 12, z0: d.z - 8, z1: d.z + 19 })),
@@ -555,7 +564,7 @@ const bulbMat = new THREE.MeshToonMaterial({ color: 0xfff3c4, emissive: 0xffd27a
 const lampLights = [];
 {
   const spots = [];
-  for (let x = PLAZA.x0; x <= PLAZA.x1; x += 10) spots.push([x, PLAZA.z0 - 2], [x, PLAZA.z1 + 2]);
+  for (let x = PLAZA.x0; x <= PLAZA.x1; x += 8) spots.push([x, PLAZA.z1 + 2]);
   ROADS.forEach((r) => {
     for (let t = 0; t < (r.x != null ? r.z1 - r.z0 : r.x1 - r.x0); t += 28) spots.push(r.x != null ? [r.x + r.w / 2 + 1.2, r.z0 + t] : [r.x0 + t, r.z + r.w / 2 + 1.2]);
   });
@@ -567,7 +576,7 @@ const lampLights = [];
     bulb.setMatrixAt(i, m.makeTranslation(x, 4.55, z));
   });
   scene.add(pole, bulb);
-  [[PLAZA.x0, PLAZA.z1 + 2], [PLAZA.x1, PLAZA.z1 + 2], [PLAZA.x0, PLAZA.z0 - 2], [PLAZA.x1, PLAZA.z0 - 2]].forEach(([x, z]) => {
+  [[PLAZA.x0, PLAZA.z1 + 2], [PLAZA.x1, PLAZA.z1 + 2], [PLAZA.x0 + 8, PLAZA.z0 + 2], [PLAZA.x1 - 8, PLAZA.z0 + 2]].forEach(([x, z]) => {
     const l = new THREE.PointLight(0xffc77a, 0, 30, 2);
     l.position.set(x, 4.4, z);
     scene.add(l);
@@ -587,32 +596,79 @@ for (let i = 0; i < 14; i++) {
   clouds.push(g);
 }
 
+/* ====================== 교통: 차량·신호등·버스정류장·도시철도 ====================== */
+const traffic = new Traffic(scene, ROADS, { density: LITE ? 0.4 : 0.75 });
+const busStops = [
+  // [도로 index, 방향, 위치(s), 정류장 x, z]
+  [2, 1, -160, -160, 59 + 7.9], [2, 1, -50, -50, 59 + 7.9], [2, -1, -140, -140, 59 - 7.9], [2, -1, -30, -30, 59 - 7.9],
+  [1, 1, 20, -104 - 7.9, 20], [1, 1, 100, -104 - 7.9, 100], [1, -1, 30, -104 + 7.9, 30], [1, -1, 110, -104 + 7.9, 110],
+  [0, 1, 100, 22 - 6.9, 100], [3, -1, -120, -120, -50 - 7.4],
+];
+const busWaitAreas = [];
+busStops.forEach(([ri, dir, sPos, x, z]) => {
+  traffic.addBusStop(ri, dir, sPos);
+  const g = add(new THREE.Group());
+  g.position.set(x, 0, z);
+  const ew = ROADS[ri].x == null;
+  g.rotation.y = ew ? (z > ROADS[ri].z ? Math.PI : 0) : (x > ROADS[ri].x ? -Math.PI / 2 : Math.PI / 2);
+  mesh(new THREE.BoxGeometry(5, 0.2, 1.8), toon(0x2c5aa0), 0, 2.8, 0, { parent: g });
+  mesh(new THREE.BoxGeometry(5, 2.6, 0.1), toon(0xbfe6ff), 0, 1.5, -0.85, { parent: g });
+  mesh(new THREE.BoxGeometry(3.6, 0.15, 0.6), toon(0x8b5a2b), 0, 0.6, -0.5, { parent: g });
+  mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6), toon(0x6b6f76), 2.9, 1.6, 0.5, { parent: g });
+  mesh(new THREE.BoxGeometry(0.7, 0.9, 0.08), toon(0x2c5aa0), 2.9, 3, 0.5, { parent: g });
+  busWaitAreas.push(ew ? { x0: x - 2.5, x1: x + 2.5, z0: z - 0.6, z1: z + 0.6 } : { x0: x - 0.6, x1: x + 0.6, z0: z - 2.5, z1: z + 2.5 });
+});
+// 1호선 지하철 출입구
+[['1호선 중앙로역', -96, -22], ['1호선 반월당역', -112, 50], ['1호선 명덕역', -96, 134]].forEach(([name, x, z]) => {
+  const g = add(new THREE.Group());
+  g.position.set(x, 0, z);
+  mesh(new THREE.BoxGeometry(3.4, 2.6, 4.4), toon(0x9fc9e8), 0, 1.3, 0, { parent: g });
+  mesh(new THREE.BoxGeometry(3.8, 0.3, 4.8), toon(0x6b6f76), 0, 2.75, 0, { parent: g });
+  mesh(new THREE.BoxGeometry(1.4, 1.4, 0.15), toon(0xd9383a), 0, 3.8, 2.2, { parent: g });
+  labelSprite(name, x, 9, z, 13, { bg: 'rgba(217,56,58,.95)', color: '#fff', size: 0.48 });
+});
+// 3호선 모노레일 (대략적인 노선: 달성공원 → 서문시장 → 신남 → 남산 → 명덕 → 건들바위 → 대봉교)
+const roadHit = (x, z, pad = 2) => ROADS.some((r) => (r.x != null ? Math.abs(x - r.x) < r.w / 2 + pad && z > r.z0 && z < r.z1 : Math.abs(z - r.z) < r.w / 2 + pad && x > r.x0 && x < r.x1));
+const monorail = new Monorail(scene, [
+  [-206, -112], [-206, -84, '달성공원'], [-205, -4, '서문시장'], [-208, 46, '신남'], [-166, 106, '남산'],
+  [-106, 140, '명덕'], [-55, 150, '건들바위'], [62, 150, '대봉교'], [100, 152],
+], {
+  height: 12,
+  skip: (x, z) => roadHit(x, z) || DONGS.some((d) => Math.abs(x - d.x) < 9 && Math.abs(z - d.z) < 9) || (x > -240 && x < -204 && z > -25 && z < -6),
+  label: (text, x, y, z) => labelSprite(text, x, y, z, 12, { bg: 'rgba(255,176,0,.95)', color: '#3b2f22', size: 0.46 }),
+});
+
 /* ====================== 주민 ====================== */
 const villagers = [];
 const plazaBehavior = {
   kind: 'plaza',
-  area: { x0: PLAZA.x0 + 2, x1: PLAZA.x1 - 2, z0: PLAZA.z0 + 4, z1: PLAZA.z1 - 2 },
-  watch: { x0: BOARD_X - 12, x1: BOARD_X + 12, z0: 6, z1: 16 },
+  area: { x0: PLAZA.x0 + 2, x1: PLAZA.x1 - 2, z0: PLAZA.z0 + 2, z1: PLAZA.z1 - 2 },
+  watch: { x0: BOARD_X - 12, x1: BOARD_X + 12, z0: BOARD_Z + 5, z1: BOARD_Z + 16 },
   doors: [...shopDoors, hallDoor],
-  pillars: [V(BOARD_X - PILLAR_DX, 0, 0), V(BOARD_X + PILLAR_DX, 0, 0)],
-  board: V(BOARD_X, 0, 0),
+  pillars: [V(BOARD_X - PILLAR_DX, 0, BOARD_Z), V(BOARD_X + PILLAR_DX, 0, BOARD_Z)],
+  board: V(BOARD_X, 0, BOARD_Z),
 };
 const scale = LITE ? 0.5 : 1;
 let si = Math.floor(Math.random() * 16);
-for (let i = 0; i < Math.round(18 * scale); i++) villagers.push(makeVillager(plazaBehavior, si++));
+for (let i = 0; i < Math.round(24 * scale); i++) villagers.push(makeVillager(plazaBehavior, si++));
+// 동성로·서문시장 인파, 버스정류장 대기
+const crowd = (area, n, id) => { for (let i = 0; i < Math.round(n * scale); i++) villagers.push(makeVillager({ kind: 'yard', area, id }, si++)); };
+crowd({ x0: DONGSEONG.x - 2.6, x1: DONGSEONG.x + 2.6, z0: DONGSEONG.z0, z1: DONGSEONG.z1 + 2 }, 16, 'street:동성로');
+crowd({ x0: -238, x1: -206, z0: -6, z1: 1 }, 9, 'street:서문시장');
+busWaitAreas.forEach((a) => crowd(a, 2, 'bus'));
 dongObjs.forEach((d) => {
-  for (let i = 0; i < (LITE ? 1 : 2); i++) villagers.push(makeVillager({ kind: 'yard', area: d.yard, id: `dong:${d.def.name}` }, si++));
+  for (let i = 0; i < 2; i++) villagers.push(makeVillager({ kind: 'yard', area: d.yard, id: `dong:${d.def.name}` }, si++));
 });
 const walks = [
-  [V(-240, 0, 59 + 7.3), V(60, 0, 59 + 7.3)], [V(60, 0, 59 - 7.3), V(-240, 0, 59 - 7.3)],
-  [V(-104 + 6.8, 0, -80), V(-104 + 6.8, 0, 170)], [V(-104 - 6.8, 0, 160), V(-104 - 6.8, 0, -80)],
-  [V(-2 - 5.6, 0, 30), V(-2 - 5.6, 0, 170)], [V(-2 + 5.6, 0, -80), V(-2 + 5.6, 0, -24)],
-  [V(-230, 0, -46 + 6.8), V(50, 0, -46 + 6.8)],
+  [V(-240, 0, 59 + 7.6), V(60, 0, 59 + 7.6)], [V(60, 0, 59 - 7.6), V(-240, 0, 59 - 7.6)],
+  [V(-104 + 7.6, 0, -80), V(-104 + 7.6, 0, 170)], [V(-104 - 7.6, 0, 160), V(-104 - 7.6, 0, -80)],
+  [V(22 - 6.6, 0, 30), V(22 - 6.6, 0, 170)], [V(22 + 6.6, 0, -80), V(22 + 6.6, 0, 170)],
+  [V(-230, 0, -50 + 7.1), V(50, 0, -50 + 7.1)], [V(50, 0, -50 - 7.1), V(-230, 0, -50 - 7.1)],
   [V(DONGSEONG.x, 0, DONGSEONG.z0), V(DONGSEONG.x, 0, DONGSEONG.z1)], [V(DONGSEONG.x + 1.5, 0, DONGSEONG.z1), V(DONGSEONG.x + 1.5, 0, DONGSEONG.z0)],
   [V(-238, 0, -20), V(-206, 0, -20)],
 ];
 walks.forEach(([a, b], i) => {
-  const n = LITE ? 1 : (i < 4 ? 2 : 1);
+  const n = LITE ? 1 : (i < 4 ? 3 : 2);
   for (let k = 0; k < n; k++) villagers.push(makeVillager({ kind: 'road', a, b }, si++));
 });
 villagers.forEach((v) => scene.add(v.group));
@@ -707,6 +763,9 @@ function talk(v) {
     const evs = tasksOfType(type).flatMap((t) => eventsOf(t)).sort((a, b) => a.sortKey - b.sortKey);
     return evs.length ? `${shop.name}: ${evs[0].task.title} ${ddayLabel(evs[0])}` : `${shop.name}은 오늘 한가해요`;
   }
+  if (place === 'street:동성로') return pickOne(['동성로 사람 진짜 많다', '약속 있어서 동성로 왔어요', '반월당에서 만나요!', '공문 마감 전에 커피 한 잔', ...(s.events.length ? [taskLine(pickOne(s.events.slice(0, 6)))] : [])]);
+  if (place === 'street:서문시장') return pickOne(['서문시장 납작만두 최고', '야시장 언제 열리지?', '시장 구경 왔어요', '칼국수 먹으러 왔어요']);
+  if (place === 'bus') return pickOne(['버스 언제 와…', '급행 타야 하는데', '다음 정류장 반월당']);
   if (place === 'hall') return `중구청 남은 일 ${s.stats.open}건, 오늘 기한 ${s.stats.today}건!`;
   if (place.startsWith('dong:')) {
     const name = place.slice(5);
@@ -801,9 +860,8 @@ function focus(spec) {
   if (spec.kind === 'hall') return flyTo(VIEWS.hall.pos, VIEWS.hall.target);
   if (spec.kind === 'shop') {
     const s = spec.shop;
-    const z = s.side === 'n' ? PLAZA.z0 - 9 : PLAZA.z1 + 9;
-    const dir = s.side === 'n' ? 1 : -1;
-    return flyTo(V(s.x, 9, z + dir * 22), V(s.x, 3, z));
+    const dir = s.side === 'w' ? 1 : -1;
+    return flyTo(V(s.x + dir * 22, 9, s.z + 6), V(s.x, 3, s.z));
   }
   if (spec.kind === 'dong') { const d = spec.dong; return flyTo(V(d.x, 16, d.z + 36), V(d.x, 4, d.z)); }
   return null;
@@ -887,6 +945,8 @@ function frame(nowMs) {
 
   sign.update(now, dt);
   villagers.forEach((v) => v.update(dt, talk));
+  traffic.update(dt);
+  monorail.update(dt);
   clouds.forEach((c) => { c.position.x += c.userData.speed * dt; if (c.position.x > 280) c.position.x = -440; });
   // 이름표는 멀리서 볼 때만 (가까이서는 화면을 가리지 않게)
   const camDist = camera.position.distanceTo(controls.target);
@@ -981,4 +1041,4 @@ async function boot() {
   }
 }
 boot();
-console.info(`서무마을: 주민 ${villagers.length}명 (${SPECIES_NAMES.length}종), 나무 ${treeSpots.length}그루`);
+console.info(`서무마을: 주민 ${villagers.length}명 (${SPECIES_NAMES.length}종), 차량 ${traffic.vehicles.length}대, 나무 ${treeSpots.length}그루`);
