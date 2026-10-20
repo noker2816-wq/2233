@@ -1,0 +1,11 @@
+{
+  "name": "seomu-board",
+  "private": true,
+  "type": "module",
+  "description": "노션 서무 할 일 LED 전광판",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "test": "node --test scripts/*.test.mjs"
+  }
+}
