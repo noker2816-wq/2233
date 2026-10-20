@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>서무 전광판</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 잠금 화면 -->
+  <section id="lock" class="lock" hidden>
+    <form id="lockForm" class="lock-box" autocomplete="off">
+      <div class="lock-title led-amber">서무 전광판</div>
+      <p class="lock-sub">업무 데이터는 암호화되어 있습니다. 비밀번호를 입력하세요.</p>
+      <input id="pw" type="password" placeholder="비밀번호" aria-label="비밀번호" required>
+      <label class="remember"><input id="remember" type="checkbox" checked> 이 기기에서 기억</label>
+      <button type="submit">열기</button>
+      <p id="lockMsg" class="lock-msg" role="alert"></p>
+      <a class="demo-link" href="?demo=1">예시 데이터로 미리보기</a>
+    </form>
+  </section>
+
+  <!-- 전광판 -->
+  <main id="board" class="board" hidden>
+    <header class="top">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="led-amber">경제진흥팀 서무 전광판</span>
+        <span id="demoBadge" class="badge-demo" hidden>예시 데이터</span>
+      </div>
+      <div class="clock-wrap">
+        <div id="date" class="date led-green"></div>
+        <div id="clock" class="clock led-green">--:--:--</div>
+      </div>
+      <div class="sync">
+        <div id="sync" class="sync-text">동기화 -</div>
+        <button id="fsBtn" class="icon-btn" type="button" title="전체 화면 (F)">⛶</button>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="main">
+      <div class="panel board-panel">
+        <div class="panel-head">
+          <span class="led-amber">기한 현황</span>
+          <span id="pageInfo" class="page-info"></span>
+        </div>
+        <div class="row row-head">
+          <span>D-DAY</span><span>구분</span><span>업무</span><span>기한</span><span>유형</span>
+        </div>
+        <div id="rows" class="rows"></div>
+      </div>
+
+      <aside class="side">
+        <div class="panel today-panel">
+          <div class="panel-head"><span class="led-red">오늘</span><span id="todayDate" class="page-info"></span></div>
+          <ul id="todayList" class="mini-list"></ul>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="led-cyan">날짜 미정</span><span id="undatedCount" class="page-info"></span></div>
+          <ul id="undatedList" class="mini-list"></ul>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="led-green">최근 7일 해낸 일</span><span id="doneCount" class="page-info"></span></div>
+          <ul id="doneList" class="mini-list"></ul>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="ticker"><div class="ticker-label">NEXT</div><div class="ticker-track"><div id="ticker" class="ticker-text"></div></div></footer>
+  </main>
+
+  <div class="scanlines" aria-hidden="true"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

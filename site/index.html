@@ -4,78 +4,69 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>서무 전광판</title>
+  <title>서무마을</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&family=Orbitron:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="village.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
+  <canvas id="scene" aria-label="서무마을 3D 화면"></canvas>
+
+  <!-- 상단 정보 -->
+  <header class="hud hud-top">
+    <div class="hud-title">
+      <span class="hud-name">서무마을</span>
+      <span id="demoBadge" class="badge-demo" hidden>예시 데이터</span>
+      <div class="hud-sub"><span id="hudDate"></span> <b id="hudClock">--:--</b></div>
+      <div id="hudSync" class="hud-sync"></div>
+    </div>
+    <nav class="hud-btns">
+      <button id="btnBoard" type="button">전광판 보기</button>
+      <button id="btnOverview" type="button">마을 전체</button>
+      <button id="btnTour" type="button" aria-pressed="true">자동 둘러보기</button>
+      <a class="btn-link" href="board.html" id="flatLink">평면 전광판</a>
+      <button id="btnFs" type="button" title="전체 화면 (F)">⛶</button>
+    </nav>
+  </header>
+
+  <!-- 건물 업무 목록 -->
+  <aside id="panel" class="panel" hidden>
+    <div class="panel-head">
+      <div>
+        <div id="panelTitle" class="panel-title"></div>
+        <div id="panelSub" class="panel-sub"></div>
+      </div>
+      <button id="panelClose" type="button" aria-label="닫기">✕</button>
+    </div>
+    <ul id="panelList" class="panel-list"></ul>
+  </aside>
+
+  <div class="hud hud-hint">드래그로 돌리기 · 휠로 확대 · 건물을 누르면 그 유형의 업무 목록</div>
+
   <!-- 잠금 화면 -->
   <section id="lock" class="lock" hidden>
     <form id="lockForm" class="lock-box" autocomplete="off">
-      <div class="lock-title led-amber">서무 전광판</div>
+      <div class="lock-title">서무마을</div>
       <p class="lock-sub">업무 데이터는 암호화되어 있습니다. 비밀번호를 입력하세요.</p>
       <input id="pw" type="password" placeholder="비밀번호" aria-label="비밀번호" required>
       <label class="remember"><input id="remember" type="checkbox" checked> 이 기기에서 기억</label>
-      <button type="submit">열기</button>
+      <button type="submit">마을 들어가기</button>
       <p id="lockMsg" class="lock-msg" role="alert"></p>
       <a class="demo-link" href="?demo=1">예시 데이터로 미리보기</a>
     </form>
   </section>
 
-  <!-- 전광판 -->
-  <main id="board" class="board" hidden>
-    <header class="top">
-      <div class="brand">
-        <span class="brand-dot"></span>
-        <span class="led-amber">경제진흥팀 서무 전광판</span>
-        <span id="demoBadge" class="badge-demo" hidden>예시 데이터</span>
-      </div>
-      <div class="clock-wrap">
-        <div id="date" class="date led-green"></div>
-        <div id="clock" class="clock led-green">--:--:--</div>
-      </div>
-      <div class="sync">
-        <div id="sync" class="sync-text">동기화 -</div>
-        <button id="fsBtn" class="icon-btn" type="button" title="전체 화면 (F)">⛶</button>
-      </div>
-    </header>
-
-    <section class="stats" id="stats"></section>
-
-    <section class="main">
-      <div class="panel board-panel">
-        <div class="panel-head">
-          <span class="led-amber">기한 현황</span>
-          <span id="pageInfo" class="page-info"></span>
-        </div>
-        <div class="row row-head">
-          <span>D-DAY</span><span>구분</span><span>업무</span><span>기한</span><span>유형</span>
-        </div>
-        <div id="rows" class="rows"></div>
-      </div>
-
-      <aside class="side">
-        <div class="panel today-panel">
-          <div class="panel-head"><span class="led-red">오늘</span><span id="todayDate" class="page-info"></span></div>
-          <ul id="todayList" class="mini-list"></ul>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><span class="led-cyan">날짜 미정</span><span id="undatedCount" class="page-info"></span></div>
-          <ul id="undatedList" class="mini-list"></ul>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><span class="led-green">최근 7일 해낸 일</span><span id="doneCount" class="page-info"></span></div>
-          <ul id="doneList" class="mini-list"></ul>
-        </div>
-      </aside>
-    </section>
-
-    <footer class="ticker"><div class="ticker-label">NEXT</div><div class="ticker-track"><div id="ticker" class="ticker-text"></div></div></footer>
-  </main>
-
-  <div class="scanlines" aria-hidden="true"></div>
-  <script type="module" src="app.js"></script>
+  <div id="loading" class="loading">마을 짓는 중…</div>
+  <noscript><p class="loading">이 페이지는 자바스크립트가 필요합니다.</p></noscript>
+  <script type="module" src="village.js"></script>
 </body>
 </html>
