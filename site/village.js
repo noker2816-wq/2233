@@ -411,12 +411,12 @@ const DS = dongseongPath ? dongseongPath.pts[Math.floor(dongseongPath.pts.length
 const SM = world.crowdAreas.find((a) => a.name === '서문시장');
 const VIEWS = {
   overview: { pos: V(MID.x + 10, 300, MID.z + 330), target: MID },
-  // 가까운 시점은 건물(최고 38) 위에서 내려다보게
+  // 가까운 시점은 건물(최고 약 14) 위에서 내려다보게
   board: { pos: V(BOARD.x, 8.2, BOARD.z + 21), target: V(BOARD.x, 8.2, BOARD.z) },
-  plaza: { pos: V(BOARD.x + 10, 50, BOARD.z + 48), target: V(BOARD.x, 3, BOARD.z + 6) },
-  hall: { pos: V(HALL.x + 16, 44, HALL.z + 46), target: V(HALL.x, 8, HALL.z) },
-  dongseong: { pos: V(DS[0] + 26, 46, DS[1] + 40), target: V(DS[0], 2, DS[1]) },
-  seomun: SM ? { pos: V((SM.x0 + SM.x1) / 2 + 26, 48, (SM.z0 + SM.z1) / 2 + 44), target: V((SM.x0 + SM.x1) / 2, 2, (SM.z0 + SM.z1) / 2) } : null,
+  plaza: { pos: V(BOARD.x + 10, 34, BOARD.z + 48), target: V(BOARD.x, 3, BOARD.z + 6) },
+  hall: { pos: V(HALL.x + 16, 30, HALL.z + 46), target: V(HALL.x, 8, HALL.z) },
+  dongseong: { pos: V(DS[0] + 26, 32, DS[1] + 40), target: V(DS[0], 2, DS[1]) },
+  seomun: SM ? { pos: V((SM.x0 + SM.x1) / 2 + 26, 34, (SM.z0 + SM.z1) / 2 + 44), target: V((SM.x0 + SM.x1) / 2, 2, (SM.z0 + SM.z1) / 2) } : null,
 };
 camera.position.copy(VIEWS.overview.pos);
 controls.target.copy(VIEWS.overview.target);

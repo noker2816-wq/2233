@@ -413,7 +413,7 @@ export function buildWorld(scene, MAP, { lite = false, labelSprite, reserve = []
     return { x, z, m };
   }
   // 스파크랜드: 옥상 관람차
-  ringBuilding('스파크랜드', 24, 0xe8e0f2, (x, z) => {
+  ringBuilding('스파크랜드', 12, 0xe8e0f2, (x, z) => {
     const wheel = new THREE.Group();
     const rim = new THREE.Mesh(new THREE.TorusGeometry(6, 0.25, 8, 40), toon(0xf06fa4));
     wheel.add(rim);
@@ -427,11 +427,11 @@ export function buildWorld(scene, MAP, { lite = false, labelSprite, reserve = []
       cab.userData.cabin = true;
       wheel.add(cab);
     }
-    wheel.position.set(x, 24 + 7, z);
+    wheel.position.set(x, 12 + 7, z);
     scene.add(wheel);
-    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 7, 8), toon(0xffffff)); stand.position.set(x, 27.5, z); scene.add(stand);
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 7, 8), toon(0xffffff)); stand.position.set(x, 15.5, z); scene.add(stand);
     out.animated.push((t) => { wheel.rotation.z = t * 0.12; wheel.children.forEach((c) => { if (c.userData.cabin) c.rotation.z = -wheel.rotation.z; }); });
-    label('스파크랜드 관람차', x, 42, z, 14, { bg: 'rgba(240,111,164,.95)', color: '#fff', size: 0.46 });
+    label('스파크랜드 관람차', x, 30, z, 14, { bg: 'rgba(240,111,164,.95)', color: '#fff', size: 0.46 });
   });
   ringBuilding('계산성당', 9, 0xb5523b, (x, z, p) => {
     const b = bbox(p.ring);
@@ -449,10 +449,10 @@ export function buildWorld(scene, MAP, { lite = false, labelSprite, reserve = []
     label('대구제일교회', x, 28, z, 11, { bg: 'rgba(176,122,90,.95)', color: '#fff', size: 0.46 });
   });
   ringBuilding('대구근대역사관', 9, 0xf1e6cc, (x, z) => label('대구근대역사관', x, 16, z, 12, { bg: 'rgba(139,90,43,.95)', color: '#fff', size: 0.46 }));
-  ringBuilding('경북대학교병원', 20, 0xf4f4f0, (x, z) => {
+  ringBuilding('경북대학교병원', 10, 0xf4f4f0, (x, z) => {
     const c = plate('✚ 경북대학교병원', 14, 2.4, { bg: '#ffffff', color: '#c0392b', size: 0.5 });
-    c.position.set(x, 21, z); c.rotation.x = -Math.PI / 2; scene.add(c);
-    label('경북대학교병원', x, 28, z, 13, { bg: 'rgba(192,57,43,.95)', color: '#fff', size: 0.46 });
+    c.position.set(x, 11, z); c.rotation.x = -Math.PI / 2; scene.add(c);
+    label('경북대학교병원', x, 18, z, 13, { bg: 'rgba(192,57,43,.95)', color: '#fff', size: 0.46 });
   });
 
   // 점만 있는 큰 건물
@@ -475,9 +475,9 @@ export function buildWorld(scene, MAP, { lite = false, labelSprite, reserve = []
     pick(b, { kind: 'place', name });
     label(name, p.x, h + 7, p.z, 12, { bg: signBg ? `${signBg}f0` : 'rgba(60,60,70,.9)', color: '#fff', size: 0.46 });
   }
-  tower('대구백화점', 20, 16, 28, '#e9e4dc', '대구백화점', '#1f6f5c');
-  tower('현대백화점 대구점', 22, 18, 30, '#e3e3e3', 'THE HYUNDAI', '#2f3b4f');
-  tower('CGV 대구한일', 12, 12, 22, '#dcd6f0', 'CGV', '#e5534b');
+  tower('대구백화점', 20, 16, 13, '#e9e4dc', '대구백화점', '#1f6f5c');
+  tower('현대백화점 대구점', 22, 18, 14, '#e3e3e3', 'THE HYUNDAI', '#2f3b4f');
+  tower('CGV 대구한일', 12, 12, 10, '#dcd6f0', 'CGV', '#e5534b');
   // 대구역 (북쪽 끝)
   const st = place['대구역'];
   if (st) {
@@ -563,15 +563,15 @@ export function buildWorld(scene, MAP, { lite = false, labelSprite, reserve = []
 /* ---------------- 채움 건물 (인스턴스) ---------------- */
 export function fillCity(scene, MAP, world, { lite = false } = {}) {
   const [BX0, BX1, BZ0, BZ1] = MAP.bbox;
-  const step = lite ? 8.5 : 6.6;
+  const step = lite ? 10 : 8;
   const spots = { low: [], high: [] };
   const dongseong = MAP.minors.filter((m) => m.name === '동성로');
   for (let x = BX0; x < BX1; x += step) for (let z = BZ0; z < BZ1; z += step) {
     const px = x + rand(-0.8, 0.8);
     const pz = z + rand(-0.8, 0.8);
     const inJung = pointInRing([px, pz], MAP.jung);
-    if (!inJung && Math.random() < 0.45) continue;
-    if (Math.random() < 0.12) continue; // 주차장·골목 빈터
+    if (!inJung && Math.random() < 0.7) continue;
+    if (Math.random() < 0.3) continue; // 주차장·골목 빈터 (덜 빽빽하게)
     const size = rand(4.2, 5.6);
     const nr = world.nearestRoad(px, pz);
     const need = nr.seg.major ? 3 + size / 2 : 1.4 + size / 2;
@@ -582,12 +582,12 @@ export function fillCity(scene, MAP, world, { lite = false } = {}) {
     let near동성로 = false;
     dongseong.forEach((m) => m.pts.forEach((p) => { if (Math.hypot(p[0] - px, p[1] - pz) < 16) near동성로 = true; }));
     let h;
-    if (nearMajor < 13) h = rand(9, 24);
-    else if (Math.random() < 0.06) h = rand(22, 38); // 아파트
-    else h = rand(3.2, 8.5);
-    if (near동성로) h = rand(6, 14);
+    if (nearMajor < 13) h = rand(4.5, 9);
+    else if (Math.random() < 0.04) h = rand(9, 13); // 아파트
+    else h = rand(2.4, 5);
+    if (near동성로) h = rand(3.5, 7);
     const ang = Math.atan2(nr.tx, nr.tz);
-    (h > 12 ? spots.high : spots.low).push({ x: px, z: pz, w: size, d: size * rand(0.8, 1.15), h, ang, shop: near동성로 });
+    (h > 7 ? spots.high : spots.low).push({ x: px, z: pz, w: size, d: size * rand(0.8, 1.15), h, ang, shop: near동성로 });
   }
   const palette = [0xf3efe6, 0xe9e2d6, 0xdcd6cc, 0xf2e3cf, 0xe2e8ec, 0xf6e7e1, 0xd9e6d3, 0xece0f0, 0xfdf3d9, 0xc9d3dc];
   const shopPal = [0xf8c3c3, 0xc3e0f8, 0xfbe3a6, 0xcdeccd, 0xe2d4f4, 0xffd8b5, 0xffb3c7];
@@ -612,6 +612,6 @@ export function fillCity(scene, MAP, world, { lite = false } = {}) {
     scene.add(im);
   };
   make(spots.low, 2, 2);
-  make(spots.high, 3, 7);
+  make(spots.high, 3, 3);
   return spots.low.length + spots.high.length;
 }
