@@ -1,6 +1,6 @@
 :root {
   --ink: #3b2f22;
-  --paper: #fff8e8;
+  --paper: #f6f2e7;
   --paper-2: #f4e9cf;
   --accent: #f29b38;
   --green: #5fb86b;
@@ -30,6 +30,7 @@ body {
 .hud-name { font-size: 26px; font-weight: 900; letter-spacing: .02em; }
 .hud-sub { font-size: 15px; font-weight: 700; color: #7a6548; margin-top: 2px; }
 .hud-sub b { font-family: 'Orbitron', monospace; color: var(--ink); margin-left: 4px; }
+.hud-weather { font-size: 14px; font-weight: 800; color: #4c7fb8; margin-top: 2px; }
 .hud-sync { font-size: 12px; color: #9a8667; margin-top: 2px; }
 .hud-sync.stale { color: var(--red); font-weight: 700; }
 .badge-demo { display: inline-block; vertical-align: middle; margin-left: 8px; font-size: 12px; font-weight: 900; color: #fff; background: var(--blue); padding: 2px 8px; border-radius: 999px; }

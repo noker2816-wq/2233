@@ -6,7 +6,7 @@ import { decryptJSON } from './crypto.js';
 import { store, fetchEnvelope, PW_KEY, makeDemo } from './shared.js';
 import { summarize, eventsOf, ddayLabel, dateLabel, level, kstToday, kstDay, kstTime, longDate, shortDate } from './logic.js';
 import { Signboard, MAIN_W, MAIN_H } from './signboard.js';
-import { makeVillager, toon, toonGradientMap, SPECIES_NAMES } from './villagers.js';
+import { makeVillager, toon, toonGradientMap, SPECIES_NAMES, bakeGroup } from './villagers.js';
 import { Traffic, Monorail } from './traffic.js';
 
 const REFRESH_MS = 3 * 60 * 1000;
@@ -24,28 +24,28 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const ORIGIN = { lat: 35.8693, lng: 128.6061 };
 const geo = (lat, lng) => ({ x: (lng - ORIGIN.lng) * 9025, z: -(lat - ORIGIN.lat) * 11095 });
 
-// 행정복지센터 위치: OpenStreetMap 좌표 기준. OSM에 없는 4곳(approx)은 동 경계 중심.
-// 아래에서 도로·광장과 겹치지 않는 가장 가까운 길가 자리로 옮기고, 가까운 길을 바라보게 세운다.
+// 행정복지센터: 도로명 주소를 OpenStreetMap에서 좌표로 바꾸고 네이버지도 화면과 대조한 위치.
+// 아래에서 도로·광장과 겹치지 않는 가장 가까운 길가 자리로 조금씩 옮기고, 가까운 길을 바라보게 세운다.
 const DONGS = [
-  { name: '동인동', lat: 35.86789, lng: 128.60913 },
-  { name: '삼덕동', lat: 35.86549, lng: 128.60897 },
-  { name: '성내1동', lat: 35.86658, lng: 128.59592 },
-  { name: '성내2동', lat: 35.86838, lng: 128.59038 },
-  { name: '성내3동', lat: 35.87258, lng: 128.58572 },
-  { name: '대신동', x: -243, z: 21.5, approx: true },
-  { name: '남산1동', x: -119.8, z: 103.1, approx: true },
-  { name: '남산2동', x: -159.5, z: 57.1, approx: true },
-  { name: '남산3동', lat: 35.85989, lng: 128.58555 },
-  { name: '남산4동', lat: 35.85816, lng: 128.58056 },
-  { name: '대봉1동', lat: 35.86156, lng: 128.60447 },
-  { name: '대봉2동', x: -65.8, z: 128.4, approx: true },
-].map((d) => (d.lat ? { ...d, ...geo(d.lat, d.lng) } : { ...d }));
+  { name: '동인동', addr: '국채보상로142길 19-5', lat: 35.867899, lng: 128.609136 },
+  { name: '삼덕동', addr: '달구벌대로447길 72-11', lat: 35.865494, lng: 128.608976 },
+  { name: '성내1동', addr: '동성로2길 7', lat: 35.866585, lng: 128.595922 },
+  { name: '성내2동', addr: '달구벌대로415길 48', lat: 35.868384, lng: 128.590385 },
+  { name: '성내3동', addr: '달성로 111', lat: 35.87258, lng: 128.58572 },
+  { name: '대신동', addr: '달구벌대로389길 50', lat: 35.86553, lng: 128.576331 },
+  { name: '남산1동', addr: '2·28길 18-15', lat: 35.859306, lng: 128.590442 },
+  { name: '남산2동', addr: '명륜로 27-1', lat: 35.864041, lng: 128.589556 },
+  { name: '남산3동', addr: '남산로4길 70', lat: 35.859896, lng: 128.585554 },
+  { name: '남산4동', addr: '남산로1길 42', lat: 35.858168, lng: 128.580569 },
+  { name: '대봉1동', addr: '달구벌대로440길 27', lat: 35.861561, lng: 128.604472 },
+  { name: '대봉2동', addr: '대봉로47길 31', lat: 35.858900, lng: 128.599900, approx: true },
+].map((d) => ({ ...d, ...geo(d.lat, d.lng) }));
 
 const ROADS = [
   { name: '공평로', x: 22, z0: -95, z1: 180, w: 10 },
   { name: '중앙대로', x: -104, z0: -95, z1: 180, w: 12 },
-  { name: '달구벌대로', z: 59, x0: -255, x1: 95, w: 12 },
-  { name: '국채보상로', z: -50, x0: -255, x1: 95, w: 11 },
+  { name: '달구벌대로', z: 59, x0: -295, x1: 95, w: 12 },
+  { name: '국채보상로', z: -50, x0: -295, x1: 95, w: 11 },
 ];
 const RIVER = { x: 78, w: 16, z0: -110, z1: 190 };
 // 중구청은 남향, 그 앞 광장 한가운데 전광판(역시 남향), 광장 좌우로 업무유형 상점
@@ -204,18 +204,18 @@ function facadeBox(w, h, d, cols, rows, wall, glass, sideCols) {
 }
 
 /* ====================== 땅·도로·강 ====================== */
-flat(420, 340, 0x8fd16a, -80, 45, 0);
+flat(470, 350, 0xaee39a, -100, 45, 0); // 파스텔 잔디
 ROADS.forEach((r) => {
   if (r.x != null) {
-    flat(r.w, r.z1 - r.z0, 0x6d717a, r.x, (r.z0 + r.z1) / 2, 0.04);
+    flat(r.w, r.z1 - r.z0, 0x7f8699, r.x, (r.z0 + r.z1) / 2, 0.04);
     for (let z = r.z0 + 4; z < r.z1; z += 9) flat(0.4, 4, 0xf5f0dc, r.x, z, 0.06);
-    flat(1.6, r.z1 - r.z0, 0xd8cdb2, r.x - r.w / 2 - 0.8, (r.z0 + r.z1) / 2, 0.05);
-    flat(1.6, r.z1 - r.z0, 0xd8cdb2, r.x + r.w / 2 + 0.8, (r.z0 + r.z1) / 2, 0.05);
+    flat(1.6, r.z1 - r.z0, 0xf6dcc0, r.x - r.w / 2 - 0.8, (r.z0 + r.z1) / 2, 0.05);
+    flat(1.6, r.z1 - r.z0, 0xf6dcc0, r.x + r.w / 2 + 0.8, (r.z0 + r.z1) / 2, 0.05);
   } else {
-    flat(r.x1 - r.x0, r.w, 0x6d717a, (r.x0 + r.x1) / 2, r.z, 0.045);
+    flat(r.x1 - r.x0, r.w, 0x7f8699, (r.x0 + r.x1) / 2, r.z, 0.045);
     for (let x = r.x0 + 4; x < r.x1; x += 9) flat(4, 0.4, 0xf5f0dc, x, r.z, 0.065);
-    flat(r.x1 - r.x0, 1.6, 0xd8cdb2, (r.x0 + r.x1) / 2, r.z - r.w / 2 - 0.8, 0.055);
-    flat(r.x1 - r.x0, 1.6, 0xd8cdb2, (r.x0 + r.x1) / 2, r.z + r.w / 2 + 0.8, 0.055);
+    flat(r.x1 - r.x0, 1.6, 0xf6dcc0, (r.x0 + r.x1) / 2, r.z - r.w / 2 - 0.8, 0.055);
+    flat(r.x1 - r.x0, 1.6, 0xf6dcc0, (r.x0 + r.x1) / 2, r.z + r.w / 2 + 0.8, 0.055);
   }
 });
 // 도로 이름 (바닥에 쓴 글씨)
@@ -264,16 +264,23 @@ const frameH = MAIN_PH + TICK_PH + 1.4;
 const frameY = SCREEN_BOTTOM - 0.6 + frameH / 2;
 const PILLAR_DX = SCREEN_W / 2 + 1.4;
 [-1, 1].forEach((s) => {
-  mesh(new THREE.CylinderGeometry(0.55, 0.7, frameY + frameH / 2 + 0.6, 16), toon(0x4a3a2e), s * PILLAR_DX, (frameY + frameH / 2 + 0.6) / 2, 0, { parent: boardGroup });
+  mesh(new THREE.CylinderGeometry(0.55, 0.7, frameY + frameH / 2 + 0.6, 16), toon(0x7fd8c4), s * PILLAR_DX, (frameY + frameH / 2 + 0.6) / 2, 0, { parent: boardGroup });
   mesh(new THREE.CylinderGeometry(1.6, 1.4, 0.9, 18), toon(0xc98b5a), s * PILLAR_DX, 0.45, 0, { parent: boardGroup });
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2;
     mesh(new THREE.SphereGeometry(0.3, 10, 8), toon([0xff7a8a, 0xffd34d, 0xffffff, 0xb48cf2][i % 4]), s * PILLAR_DX + Math.cos(a) * 1.05, 1.05, Math.sin(a) * 1.05, { parent: boardGroup });
   }
 });
-const boardFrame = mesh(new THREE.BoxGeometry(SCREEN_W + 1.6, frameH, 0.9), toon(0x2a2a30), 0, frameY, 0, { parent: boardGroup });
-mesh(new THREE.BoxGeometry(SCREEN_W + 2.6, 0.5, 1.6), toon(0xf29b38), 0, frameY + frameH / 2 + 0.25, 0, { parent: boardGroup });
-const boardTitle = plate('중구청 광장 전광판', 9, 1.2, { bg: '#f29b38', color: '#3b2f22', size: 0.55, radius: 30 });
+const boardFrame = mesh(new THREE.BoxGeometry(SCREEN_W + 1.6, frameH, 0.9), toon(0x2b3478), 0, frameY, 0, { parent: boardGroup });
+// 전광판 위 고양이 귀
+[-1, 1].forEach((s) => {
+  const ear = mesh(new THREE.ConeGeometry(2.2, 3.4, 4), toon(0x2b3478), s * (SCREEN_W / 2 - 2.4), frameY + frameH / 2 + 1.6, 0, { parent: boardGroup });
+  ear.rotation.y = Math.PI / 4; ear.scale.z = 0.35;
+  const inner = mesh(new THREE.ConeGeometry(1.2, 2, 4), toon(0xff8fab), s * (SCREEN_W / 2 - 2.4), frameY + frameH / 2 + 1.3, 0.5, { parent: boardGroup });
+  inner.rotation.y = Math.PI / 4; inner.scale.z = 0.2;
+});
+mesh(new THREE.BoxGeometry(SCREEN_W + 2.6, 0.5, 1.6), toon(0xff8fab), 0, frameY + frameH / 2 + 0.25, 0, { parent: boardGroup });
+const boardTitle = plate('★ 서무 전광판 ★', 8, 1.2, { bg: '#ff8fab', color: '#ffffff', size: 0.56, radius: 40 });
 boardTitle.position.set(0, frameY + frameH / 2 + 1.25, 0.2);
 boardGroup.add(boardTitle);
 
@@ -426,7 +433,7 @@ const placed = [];
 function siteOK(x, z) {
   if (roadEdge(x, z).c < 11) return false;
   if (Math.abs(x - RIVER.x) < RIVER.w / 2 + 20) return false;
-  if (x < -250 || x > 90 || z < -100 || z > 175) return false;
+  if (x < -285 || x > 90 || z < -100 || z > 175) return false;
   if (NO_GO.some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1)) return false;
   if (NO_GO_CIRCLE.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) return false;
   return placed.every((p) => Math.hypot(x - p.x, z - p.z) > 28);
@@ -457,11 +464,19 @@ const dongObjs = DONGS.map((d, i) => {
   const h = 9;
   const dep = 9;
   mesh(new THREE.BoxGeometry(w + 6, 0.4, dep + 10), toon(0xd8cdb2), 0, 0.2, 2, { parent: g, receive: true });
-  const body = facadeBox(w, h, dep, 7, 3, ['#f4efe4', '#eef2f4', '#f6ecdf'][i % 3], '#8fb8d8', 5);
+  const PASTEL = ['#fde2e4', '#e2f0cb', '#dbe7fb', '#fff1c1', '#e9dcfb', '#ffe5cc'];
+  const body = facadeBox(w, h, dep, 7, 3, PASTEL[i % 6], '#8fb8d8', 5);
   body.position.y = h / 2 + 0.4;
   body.castShadow = body.receiveShadow = true;
   g.add(body);
-  mesh(new THREE.BoxGeometry(w + 0.6, 0.6, dep + 0.6), toon([0x2c5aa0, 0x3fbfb0, 0x5fb86b][i % 3]), 0, h + 0.7, 0, { parent: g });
+  mesh(new THREE.BoxGeometry(w + 0.6, 0.6, dep + 0.6), toon([0xff8fab, 0x7fd8c4, 0x74a9ff, 0xffc94d, 0xb48cf2, 0xff9f6b][i % 6]), 0, h + 0.7, 0, { parent: g });
+  // 정문 양옆 화분과 앞마당 생울타리
+  [-1, 1].forEach((sd) => {
+    mesh(new THREE.CylinderGeometry(0.7, 0.55, 0.8, 12), toon(0xf6b78c), sd * 3.4, 0.4, dep / 2 + 1.4, { parent: g });
+    [0, 1, 2].forEach((k) => mesh(new THREE.SphereGeometry(0.32, 8, 6), toon([0xff7a8a, 0xffd34d, 0xffffff][k]), sd * 3.4 + (k - 1) * 0.35, 0.95, dep / 2 + 1.4 + (k % 2) * 0.2, { parent: g }));
+    const hedge = mesh(new THREE.BoxGeometry(1.1, 1.1, 8), toon(0x6cc070), sd * (w / 2 + 2.2), 0.55, dep / 2 + 4.5, { parent: g });
+    hedge.scale.y = 1;
+  });
   mesh(new THREE.BoxGeometry(5, 0.4, 3), toon(0xffffff), 0, 3.4, dep / 2 + 1.5, { parent: g });
   [-2, 2].forEach((x) => mesh(new THREE.CylinderGeometry(0.15, 0.15, 3, 8), toon(0xffffff), x, 1.9, dep / 2 + 2.8, { parent: g }));
   mesh(new THREE.BoxGeometry(3, 2.8, 0.2), toon(0x3a5f86), 0, 1.8, dep / 2 + 0.05, { parent: g });
@@ -569,7 +584,8 @@ ROADS.forEach((r) => {
   const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.3, 1.6, 6), toon(0x8b5a2b), n);
   const round = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.5, 1), toon(0xffffff), n);
   const cone = new THREE.InstancedMesh(new THREE.ConeGeometry(1.5, 3.4, 7), toon(0xffffff), n);
-  const greens = [0x5fb86b, 0x4fa65c, 0x73c46e, 0x8acb6a, 0xf2a65a];
+  // 가을 대구: 초록 + 노란 은행나무 + 단풍 + 분홍 꽃나무
+  const greens = [0x6fcf7f, 0x86d98a, 0x5fbf73, 0xffd54f, 0xffc23d, 0xff9f6b, 0xf7b6c8];
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const sc = new THREE.Vector3();
@@ -579,8 +595,9 @@ ROADS.forEach((r) => {
   treeSpots.forEach(([x, z, s], i) => {
     m.compose(V(x, 0.8 * s, z), q, sc.set(s, s, s));
     trunk.setMatrixAt(i, m);
-    col.setHex(greens[Math.random() < 0.08 ? 4 : Math.floor(Math.random() * 4)]);
-    if (Math.random() < 0.55) {
+    const rnd = Math.random();
+    col.setHex(greens[rnd < 0.5 ? Math.floor(Math.random() * 3) : rnd < 0.78 ? 3 + Math.floor(Math.random() * 2) : rnd < 0.92 ? 5 : 6]);
+    if (Math.random() < 0.8) { // 동글동글한 나무 위주
       m.compose(V(x, 2.6 * s, z), q, sc.set(s, s * rand(0.9, 1.2), s));
       round.setMatrixAt(ri, m);
       round.setColorAt(ri++, col);
@@ -693,6 +710,161 @@ const monorail = new Monorail(scene, [
   skip: (x, z) => roadHit(x, z) || DONGS.some((d) => Math.abs(x - d.x) < 9 && Math.abs(z - d.z) < 9) || (x > -240 && x < -204 && z > -25 && z < -6),
   label: (text, x, y, z) => labelSprite(text, x, y, z, 12, { bg: 'rgba(255,176,0,.95)', color: '#3b2f22', size: 0.46 }),
 });
+
+/* ====================== 아기자기 장식 ====================== */
+const animated = [];
+const PASTELS = [0xff8fab, 0xffd34d, 0x7fd8c4, 0x74a9ff, 0xb48cf2, 0xff9f6b, 0xffffff];
+// 가랜드(삼각 깃발 줄)
+function bunting(a, b, n = 14, sag = 1.4) {
+  const g = new THREE.Group();
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const p = a.clone().lerp(b, t);
+    p.y -= sag * 4 * t * (1 - t);
+    pts.push(p);
+  }
+  const line = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n * 3, 0.05, 4), toon(0xffffff));
+  g.add(line);
+  for (let i = 1; i < n; i++) {
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.95, 3), toon(PASTELS[i % PASTELS.length]));
+    f.rotation.x = Math.PI;
+    f.position.copy(pts[i]).add(V(0, -0.5, 0));
+    g.add(f);
+  }
+  bakeGroup(g, { cast: false });
+  scene.add(g);
+}
+// 광장 위 가랜드
+[PLAZA.z1 - 1, PLAZA.z0 + 4].forEach((z) => bunting(V(PLAZA.x0, 6.5, z), V(PLAZA.x1, 6.5, z), 22, 1.6));
+bunting(V(BOARD_X - PILLAR_DX, 13, BOARD_Z), V(PLAZA.x0, 6.5, PLAZA.z1 - 1), 12, 1.2);
+bunting(V(BOARD_X + PILLAR_DX, 13, BOARD_Z), V(PLAZA.x1, 6.5, PLAZA.z1 - 1), 12, 1.2);
+// 동성로 지그재그 가랜드
+for (let z = DONGSEONG.z0; z < DONGSEONG.z1; z += 9) bunting(V(DONGSEONG.x - 4, 6, z), V(DONGSEONG.x + 4, 6, z + 4.5), 7, 0.6);
+
+// 광장 벤치 + 파라솔
+function bench(x, z, rot, withUmbrella) {
+  const g = new THREE.Group();
+  const wood = toon(0xc98b5a);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(3, 0.18, 0.9), wood); seat.position.y = 0.6; g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(3, 0.7, 0.14), wood); back.position.set(0, 1, -0.4); g.add(back);
+  [-1.3, 1.3].forEach((dx) => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.8), toon(0x6b5a48)); l.position.set(dx, 0.3, 0); g.add(l); });
+  if (withUmbrella) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.2, 6), toon(0xffffff)); pole.position.set(0, 1.6, 0.9); g.add(pole);
+    const cover = new THREE.Mesh(new THREE.ConeGeometry(1.9, 0.9, 8), toon(PASTELS[Math.floor(Math.random() * 6)])); cover.position.set(0, 3.3, 0.9); g.add(cover);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  bakeGroup(g);
+  g.position.set(x, 0, z);
+  g.rotation.y = rot;
+  scene.add(g);
+}
+[[PLAZA.x0 + 5, PLAZA.z1 - 4, 0], [PLAZA.x0 + 14, PLAZA.z1 - 4, 0], [PLAZA.x1 - 5, PLAZA.z1 - 4, 0], [PLAZA.x1 - 14, PLAZA.z1 - 4, 0],
+  [PLAZA.x0 + 4, PLAZA.z0 + 7, Math.PI / 2], [PLAZA.x1 - 4, PLAZA.z0 + 7, -Math.PI / 2]].forEach(([x, z, r], i) => bench(x, z, r + Math.PI, i % 2 === 0));
+
+// 전광판 옆 풍선 다발 (둥실둥실)
+[-1, 1].forEach((sd) => {
+  for (let i = 0; i < 6; i++) {
+    const g = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.75, 14, 12), toon(PASTELS[(i + (sd > 0 ? 3 : 0)) % 6]));
+    b.scale.y = 1.15;
+    g.add(b);
+    const str = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 4, 4), toon(0xffffff)); str.position.y = -2.6; g.add(str);
+    const bx = BOARD_X + sd * (PILLAR_DX + 1.8) + (i % 3 - 1) * 0.9;
+    const bz = BOARD_Z + 1.2 + Math.floor(i / 3) * 0.9;
+    const by = 5.5 + (i % 3) * 0.7 + Math.floor(i / 3) * 0.5;
+    g.position.set(bx, by, bz);
+    scene.add(g);
+    animated.push((t) => { g.position.y = by + Math.sin(t * 1.3 + i) * 0.25; g.rotation.z = Math.sin(t * 0.9 + i) * 0.08; });
+  }
+});
+
+// 서무 고양이 동상 (마스코트)
+{
+  const cat = makeVillager({ kind: 'yard', area: { x0: 0, x1: 0, z0: 0, z1: 0 } }, 0);
+  const mx = PLAZA.x0 + 7;
+  const mz = PLAZA.z1 - 9;
+  cat.group.position.set(mx, 1.2, mz);
+  cat.group.scale.setScalar(2.6);
+  cat.group.rotation.y = 0.5;
+  scene.add(cat.group);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.5, 1.2, 20), toon(0xfff3c4)); ped.position.set(mx, 0.6, mz); ped.castShadow = true; scene.add(ped);
+  const tag = plate('서무냥', 3.2, 0.9, { bg: '#ff8fab', color: '#ffffff', size: 0.6, radius: 40 });
+  tag.position.set(mx, 0.7, mz + 2.55);
+  scene.add(tag);
+  animated.push((t) => { cat.head.rotation.z = Math.sin(t * 1.5) * 0.12; cat.arms[1].rotation.x = -1.6 + Math.sin(t * 6) * 0.35; });
+}
+
+// 나비 (공원·광장 위를 팔랑팔랑)
+{
+  const spots = [[BOARD_X, BOARD_Z + 12], [-215, -64], [-120, -30], [PLAZA.x0 + 8, PLAZA.z1 - 6], [DONGSEONG.x, 20], [RIVER.x - 14, 20], [RIVER.x - 14, 110]];
+  const wingGeo = new THREE.CircleGeometry(0.32, 10);
+  for (let i = 0; i < (LITE ? 10 : 26); i++) {
+    const [cx, cz] = spots[i % spots.length];
+    const g = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: PASTELS[i % 6], side: THREE.DoubleSide });
+    const wl = new THREE.Mesh(wingGeo, mat); wl.position.x = -0.28; g.add(wl);
+    const wr = new THREE.Mesh(wingGeo, mat); wr.position.x = 0.28; g.add(wr);
+    const pl = new THREE.Group(); pl.add(wl); const pr = new THREE.Group(); pr.add(wr); g.add(pl, pr);
+    scene.add(g);
+    const r = rand(3, 9); const sp = rand(0.25, 0.6) * (Math.random() < 0.5 ? -1 : 1); const ph = Math.random() * 6; const hy = rand(1.4, 3.2);
+    animated.push((t) => {
+      const a = t * sp + ph;
+      g.position.set(cx + Math.cos(a) * r, hy + Math.sin(t * 2 + ph) * 0.4, cz + Math.sin(a * 1.3) * r * 0.7);
+      g.rotation.y = -a;
+      const f = Math.sin(t * 18 + ph) * 1.1;
+      pl.rotation.y = f; pr.rotation.y = -f;
+    });
+  }
+}
+
+/* ====================== 실시간 대구 날씨 (Open-Meteo, 키 없음) ====================== */
+const WX = { code: null, temp: null };
+const WX_NAME = (c) => (c === 0 ? '맑음' : c <= 2 ? '구름 조금' : c === 3 ? '흐림' : c <= 48 ? '안개' : c <= 67 ? '비' : c <= 77 ? '눈' : c <= 82 ? '소나기' : c <= 86 ? '눈' : '뇌우');
+const WX_ICON = (c) => (c === 0 ? '☀' : c <= 3 ? '⛅' : c <= 48 ? '🌫' : c <= 67 || (c >= 80 && c <= 82) || c >= 95 ? '☔' : '❄');
+let rain = null;
+function makePrecip(snow) {
+  const n = LITE ? 700 : 1800;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { pos[i * 3] = rand(-90, 90); pos[i * 3 + 1] = rand(0, 60); pos[i * 3 + 2] = rand(-90, 90); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: snow ? 0xffffff : 0xbfe3ff, size: snow ? 0.45 : 0.22, transparent: true, opacity: 0.85, depthWrite: false }));
+  pts.userData.snow = snow;
+  scene.add(pts);
+  return pts;
+}
+function weatherFx(dt) {
+  if (!rain) return;
+  rain.position.set(controls.target.x, 0, controls.target.z);
+  const a = rain.geometry.attributes.position;
+  const v = rain.userData.snow ? 4 : 38;
+  for (let i = 0; i < a.count; i++) {
+    let y = a.getY(i) - v * dt;
+    if (y < 0) y += 60;
+    a.setY(i, y);
+    if (rain.userData.snow) a.setX(i, a.getX(i) + Math.sin(y + i) * dt * 0.6);
+  }
+  a.needsUpdate = true;
+}
+async function loadWeather() {
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=35.8694&longitude=128.6062&current=temperature_2m,weather_code&timezone=Asia%2FSeoul');
+    const d = await r.json();
+    WX.code = d.current.weather_code;
+    WX.temp = Math.round(d.current.temperature_2m);
+    $('hudWeather').textContent = `${WX_ICON(WX.code)} 대구 ${WX_NAME(WX.code)} ${WX.temp}°`;
+    const wet = (WX.code >= 51 && WX.code <= 67) || (WX.code >= 80 && WX.code <= 82) || WX.code >= 95;
+    const snow = (WX.code >= 71 && WX.code <= 77) || WX.code === 85 || WX.code === 86;
+    const forced = params.get('weather');
+    const wantRain = forced ? forced === 'rain' : wet;
+    const wantSnow = forced ? forced === 'snow' : snow;
+    if (rain) { scene.remove(rain); rain.geometry.dispose(); rain = null; }
+    if (wantRain || wantSnow) rain = makePrecip(wantSnow);
+  } catch { $('hudWeather').textContent = ''; }
+}
+loadWeather();
+setInterval(loadWeather, 30 * 60 * 1000);
 
 /* ====================== 주민 ====================== */
 const villagers = [];
@@ -847,7 +1019,7 @@ function openPanel(spec) {
   if (spec.kind === 'dong') {
     tasks = tasksOfDong(spec.dong.name);
     title = `${spec.dong.name} 행정복지센터`;
-    sub = `${spec.dong.approx ? '위치 대략 · ' : ''}제목·미제출에 '${spec.dong.name}'이 들어간 업무 ${tasks.length}건`;
+    sub = `${spec.dong.addr ? `중구 ${spec.dong.addr} · ` : ''}'${spec.dong.name}'이 들어간 업무 ${tasks.length}건`;
     empty = `'${spec.dong.name}'이 들어간 업무가 없어요`;
   }
   $('panelTitle').textContent = title;
@@ -1009,6 +1181,8 @@ function frame(nowMs) {
   const labelAlpha = THREE.MathUtils.clamp((camDist - 70) / 50, 0, 1);
   labels.forEach((l) => { l.material.opacity = labelAlpha; l.visible = labelAlpha > 0.02; });
   flags.forEach((f, i) => { f.rotation.y = Math.sin(nowMs / 600 + i) * 0.25; });
+  animated.forEach((f) => f(nowMs / 1000));
+  weatherFx(dt);
   water.material.color.setHSL(0.56, 0.6, 0.64 + Math.sin(nowMs / 1500) * 0.015);
 
   renderer.render(scene, camera);
