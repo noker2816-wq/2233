@@ -1,3 +1,4 @@
 node_modules/
 site/data.enc.json
 .DS_Store
+.court/
